@@ -1,0 +1,13 @@
+Sổ tay thực nghiệm Phase a - Đồ thị cảnh 3 chiều 
+Mục tiêu : tự tay kiểm chứng đo đạc các số liệu ,... 
+Ta đã code được một đồ thị 3d mô phỏng lại một hành lang gồm nhiều đồ vật,... việc tiếp theo ta cần chạy benchmark
+BenchMark gồm cái gì?
+1.Ta có 5 bộ đề thi giống hệt nhau (SEEDS = [42,43,44,45,46])
+Mỗi seed tạo ra một chuỗi 120 hành lang khác nhau (Như ghế đặt chỗ khác,người đi bộ tốc độ khác,... ) 
+Tại sao phải cho làm 5 lần? Vì dùng để tránh 1 bộ đề quá dễ ví dụ các vật cách nhau xa,không có nhiều vật cản nguy hiểm, người đi bộ chậm,...
+2. Cho 4 thí sinh làm cùng 1 bộ đề
+4 thí sinh: Random,distance,semantic và cuối cùng là proposed lần lượt đọc từng frame và chọn ra k vật thể từng frame đó
+3. Ta có một danh sách k vật thể mà thí sinh được thử 
+ k_budget = [3,5,7,10,15]
+ Từ cực hẹp như chỉ được nhớ 3 vật thể đến 15 vật thể,....
+4. Chấm điểm và xuất kết quả
