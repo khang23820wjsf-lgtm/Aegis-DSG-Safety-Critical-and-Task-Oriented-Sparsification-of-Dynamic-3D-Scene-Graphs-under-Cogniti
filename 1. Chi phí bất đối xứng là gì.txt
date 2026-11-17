@@ -1,0 +1,16 @@
+1. Chi phí bất đối xứng là gì?
+Chi phí bất đối xứng là cái giá phải trả khác nhau cho 2 loại trường hợp sai khác nhau
+Ta có 1 ví dụ đơn giản về 2 lỗi sai:
+	Lỗi đầu tiên : Phía trước không có gì nguy hiểm nhưng máy báo có nguy hiểm
+	Hậu quả: Người dùng cảm thấy hơi phiền và chỉ khựng lại 0.5s. Chi phí rất nhỏ
+	Lỗi thứ hai : Phía trước mặt có một vật nguy hiểm đang lao tới nhưng máy báo không có nguy hiểm
+	Hậu quả: Người dùng có thể bị đâm trọng thương hoặc tử vong. Chi phí phải trả là tàn khốc
+Nói đơn giản:
+	Cost(FalseNegative) > Cost(FalsePositive)
+Nếu dùng công thức đối xứng thông thường lấy điểm nguy hiểm nhất  * với độ tin cậy (Qv *Qr), thì một vật cản nguy hiểm bị che khuất làm một phần (làm Qv tụt xuống 0.3) điểm của nó sẽ bị kéo tụt xuống và bị thuật toán xóa mất -? dính bẫy False Negative:
+	Vì vậy trong hàm đã được biến đổi:
+		Sv = a* Rv * (1 + y * Uv * I(Rv >Thaz)) + B.Qv.Cv
+	Khi một vật thể nằm trong phễu va chạm nguy hiểm (Rv > Thaz), độ bất định nhận thức Uv = 1-Qv, không làm giảm điểm mà lại cộng thêm điểm ưu tiên (nhờ hệ số Y) nghĩa là : càng không chắc chắn vật cản ngay trước mũi, hệ thống càng phải giữ nó lại để cảnh báo thận trọng thay vì xóa đi
+	"Nếu vẫn cứ giữ mấy cái vật không chắc chắn đó đầy màn hình thì sao?"
+Ta có hàm chỉ thị : I(Rv > Thaz) :
+	Cơ chế cộng điểm bất định chỉ kích hoạt bên trong phễu nguy hiểm (Rv>Thaz) . Còn những vật không rõ ngoài đường đi (ví dụ : Như bức tranh đường phố bên phải) I = 0 nên nó vẫn bị Qv ở vế sau (B*Qv*Cv) loại bỏ như thường)
