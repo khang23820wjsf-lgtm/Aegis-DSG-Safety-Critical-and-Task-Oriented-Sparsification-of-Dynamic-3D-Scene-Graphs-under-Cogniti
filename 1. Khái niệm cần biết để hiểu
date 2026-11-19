@@ -1,0 +1,32 @@
+1. Chi phí bất đối xứng là gì?
+Chi phí bất đối xứng là cái giá phải trả khác nhau cho 2 loại trường hợp sai khác nhau
+Ta có 1 ví dụ đơn giản về 2 lỗi sai:
+	Lỗi đầu tiên : Phía trước không có gì nguy hiểm nhưng máy báo có nguy hiểm
+	Hậu quả: Người dùng cảm thấy hơi phiền và chỉ khựng lại 0.5s. Chi phí rất nhỏ
+	Lỗi thứ hai : Phía trước mặt có một vật nguy hiểm đang lao tới nhưng máy báo không có nguy hiểm
+	Hậu quả: Người dùng có thể bị đâm trọng thương hoặc tử vong. Chi phí phải trả là tàn khốc
+Nói đơn giản:
+	Cost(FalseNegative) > Cost(FalsePositive)
+Nếu dùng công thức đối xứng thông thường lấy điểm nguy hiểm nhất  * với độ tin cậy (Qv *Qr), thì một vật cản nguy hiểm bị che khuất làm một phần (làm Qv tụt xuống 0.3) điểm của nó sẽ bị kéo tụt xuống và bị thuật toán xóa mất -? dính bẫy False Negative:
+	Vì vậy trong hàm đã được biến đổi:
+		Sv = a* Rv * (1 + y * Uv * I(Rv >Thaz)) + B.Qv.Cv
+	Khi một vật thể nằm trong phễu va chạm nguy hiểm (Rv > Thaz), độ bất định nhận thức Uv = 1-Qv, không làm giảm điểm mà lại cộng thêm điểm ưu tiên (nhờ hệ số Y) nghĩa là : càng không chắc chắn vật cản ngay trước mũi, hệ thống càng phải giữ nó lại để cảnh báo thận trọng thay vì xóa đi
+	"Nếu vẫn cứ giữ mấy cái vật không chắc chắn đó đầy màn hình thì sao?"
+Ta có hàm chỉ thị : I(Rv > Thaz) :
+	Cơ chế cộng điểm bất định chỉ kích hoạt bên trong phễu nguy hiểm (Rv>Thaz) . Còn những vật không rõ ngoài đường đi (ví dụ : Như bức tranh đường phố bên phải) I = 0 nên nó vẫn bị Qv ở vế sau (B*Qv*Cv) loại bỏ như thường)
+Từng đơn vị nghĩa là gì :
+-Rv độ sắp đâm) : Thứ đó đang lao tới không? Đang lao tới => Điểm cao ngất. Treo ở trên tầng nhà hoặc ở bên kia đường -> 0 điểm
+-Qv( độ nhìn rõ) : Camera thấy rõ hay mù mờ? : Càng rõ -> càng = 1 ; càng mờ -> càng = 0.3 
+- Uv ( độ mù mờ/ độ nghi ngờ) : Ngược lại với Qv (1-Qv) càng nhìn không rõ cái gì thì Uv càng to
+- I (Rv>Thaz) (Công tắc "sợ chết") : Nó chỉ  bật lên = 1 khi món đồ nằm ngay trước đường đi (nguy hiểm vượt qua Thaz ) . Còn nằm tít bên kia đường thì = 0
+- Cv (Độ "chỉ đường") : Món đồ đó có giúp ta biết mình đang ở đâu không? Cửa ra vào,cầu thang,... => Rất quan trọng (Cv cao). Bức tranh, cái đèn -> Cv rất thấp (vô dụng)
+- a,b,Y (3 chỉ số ưu tiên) :
+	- a (to đùng ) : Ưu tiên né va chạm
+	- b (nhỏ xíu) : Chỉ khi nào đường thoáng không có gì sắp đâm, mới dùng slot thừa để chỉ đường (cửa ở đâu, cầu thang ở đâu).
+	- Y ( chỉ số "thà báo nhầm còn hơn bỏ sót") : Nếu có cục gì nằm ngay trước mũi mà camera nhìn lờ mờ không rõ (Uv cao ) , chỉ số y này cộng thêm điểm để bắt buộc phải hét lên cảnh báo, cấm được lơ đi!'
+Lấy những gì để đo ? 
+Hiện tại trong phase A (ta dùng mô phỏng) :
+		Rv (độ sắp đâm) : Ta không tự bịa . Ta tính bằng công thức vật lý động học trong hàm _compute_collision_risk lấy tọa độ (x,y,z) kích thước vật thể và vận tốc vector hai bên. Tính ra xem mấy giây nữa đâm nhau (TTC) và độ lệch nhau mấy m, rồi quy ra [0,1]
+		Qv (độ nhìn rõ) : Trong mô phỏng. Nó mô phỏng đúng vật lý của mắt kính : vật đứng ngay chính giữa mặt ở gần thì Qv = (sắp xỉ) 0.95 : vật dạt ra rìa tầm nhìn hoặc ở xa, trời nhiễu thì Qv còn từ 0.2-> 0.4
+		Cv( độ chỉ đường) : Tra từ bảng từ điển loại vật thể (OBJECT_SPECS trong dsg_generator.py): cửa ra vào / mép cầu thang được gán sẵn 0.90–0.95, cột tường 0.70, ghế 0.15, tranh treo tường / đèn trần 0.05.
+Nếu 

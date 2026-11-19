@@ -1,0 +1,62 @@
+====================================================================
+SO TAY THI NGHIEM PHASE A - DYNAMIC 3D SCENE GRAPH SPARSIFICATION
+Nguoi thuc hien: Truong Hoang Khang
+====================================================================
+
+[MUC TIEU]
+Tu tay kiem chung, do dac va tim ra diem manh / diem yeu that su cua
+thuat toan Proposed truoc khi viet bao cao Phase A hoac qua Phase B.
+
+--------------------------------------------------------------------
+EXP 0: MOC BAN DAU (Baseline run da chay)
+- Cau hinh: noise_level="medium", num_objects=42, 5 seeds (42..46)
+- Ket qua tai k=5:
+  + Proposed : Hazard Recall = 87.2% | CVaR-5% = 49.9% | Flicker = 0.180
+  + Distance : Hazard Recall = 65.3% | CVaR-5% = 16.6% | Flicker = 0.258
+  + Semantic : Hazard Recall = 59.6% | CVaR-5% = 11.6% | Flicker = 0.180
+  + Random   : Hazard Recall = 26.6% | CVaR-5% =  0.0% | Flicker = 0.845
+
+--------------------------------------------------------------------
+EXP 1: THU DO LI DUOI NHIEU NANG (Noise Stress Test)
+- Viec can lam:
+  Mo file run_benchmark.py, doi noise_level="medium" thanh "heavy" (va "clean").
+  Chay lai: python run_benchmark.py
+- Cau hoi: Khi nhieu nang (rot node nhieu, lech toa do cao), Proposed co bi sap
+  theo Distance khong, hay van giu duoc khoang cach an toan?
+- Ket qua ghi chep:
+  + Clean (k=5) : Proposed = ...% | Distance = ...%
+  + Heavy (k=5) : Proposed = ...% | Distance = ...%
+- Nhan xet cua t:
+  (Tu ghi vao day...)
+
+--------------------------------------------------------------------
+EXP 2: CAT BO TUNG BO PHAN (Ablation Study)
+- Viec can lam:
+  Mo file src/proposed.py, thu lan luot tat tung thanh phan roi chay lai benchmark
+  (nho tra lai gia tri cu sau moi lan thu):
+  1) Tat Bat doi xung rui ro: doi gamma = 0.0
+  2) Tat Chong nhap nhay (Hysteresis): doi hysteresis_bonus = 0.0
+  3) Tat Diem cau truc ngu nghia: doi beta = 0.0
+- Cau hoi: Thanh phan nao dong gop nhieu nhat? Cai nao co hay khong cung vay?
+- Ket qua ghi chep (tai k=5, noise="medium"):
+  + Full Proposed           : Recall = 87.2% | Flicker = 0.180
+  + Khong Bat doi xung (g=0): Recall = ...%  | Flicker = ...
+  + Khong Hysteresis (h=0)  : Recall = ...%  | Flicker = ...
+  + Khong Ngu nghia (b=0)   : Recall = ...%  | Flicker = ...
+- Nhan xet cua t:
+  (Tu ghi vao day...)
+
+--------------------------------------------------------------------
+EXP 3: TRUY TIM 12.8% LOI CON SOT TAI k=5 (Error Analysis)
+- Viec can lam:
+  Kiem tra xem trong nhung frame ma Proposed bi rot Hazard Recall o k=5,
+  nguyen nhan la do:
+  (a) Co nhieu hon 5 vat nguy hiem cung luc (tran ngan sach -> can Coarsening o Phase B)
+  hay (b) Thuat toan cham diem sai (bo quen vat nguy hiem du so luong <= 5)?
+- Ket qua ghi chep / Suy luan:
+  (Tu ghi vao day...)
+
+--------------------------------------------------------------------
+GHI CHU THEM / Y TUONG CAI TIEN CHO PHASE B:
+- ...
+====================================================================
