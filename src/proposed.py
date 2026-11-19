@@ -50,10 +50,10 @@ class ProposedSparsifier:
         size = data["size"]
         vel = data["vel"]
 
-        # 1. Height relevance filter (ignore overhead objects above agent head)
+        # 1. Height relevance filter (ignore overhead objects above head & flat floor mats)
         z_min = pos[2] - size[2] / 2.0
         z_max = pos[2] + size[2] / 2.0
-        if z_min > agent.height + 0.15 or z_max < 0.0:
+        if z_min > agent.height + 0.15 or z_max < 0.05:
             return 0.0
 
         # 2. Relative kinematics in XY plane
@@ -82,8 +82,10 @@ class ProposedSparsifier:
         else:
             angle = 0.0
 
-        # Smooth cone factor: 1.0 inside reachable cone, decays smoothly outside
-        if angle <= self.cone_half_angle_rad:
+        # Smooth cone factor: 1.0 inside reachable cone OR inside personal safety bubble (< 2.2m)
+        # Prevents side-swipe blind spots when steering sharply around front obstacles.
+        in_safety_bubble = dist <= 2.2
+        if in_safety_bubble or angle <= self.cone_half_angle_rad:
             cone_factor = 1.0
         else:
             cone_factor = math.exp(-((angle - self.cone_half_angle_rad) / 0.35) ** 2)
@@ -93,9 +95,11 @@ class ProposedSparsifier:
         if closing_speed > 0.3:
             cone_factor = max(cone_factor, 0.75)
 
-        # Combine spatial proximity at TTC and urgency (1 - ttc / horizon)
-        spatial_risk = math.exp(-(d_min ** 2) / (2.0 * 0.65 ** 2))
-        time_urgency = 1.0 - 0.5 * (ttc / self.horizon_s)
+        # Combine spatial proximity (min of TTC approach & immediate distance inside bubble)
+        d_now = float(np.linalg.norm(np.maximum(np.abs(rel_pos) - half_ext, 0.0)))
+        eff_dist = min(d_min, d_now) if in_safety_bubble else d_min
+        spatial_risk = math.exp(-(eff_dist ** 2) / (2.0 * 0.65 ** 2))
+        time_urgency = 1.0 if in_safety_bubble else (1.0 - 0.5 * (ttc / self.horizon_s))
         sev = float(data.get("hazard_severity", 0.8))
 
         r_v = spatial_risk * time_urgency * cone_factor * max(sev, 0.2)

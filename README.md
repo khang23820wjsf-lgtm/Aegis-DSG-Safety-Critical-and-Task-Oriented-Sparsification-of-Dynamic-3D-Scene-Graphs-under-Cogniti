@@ -13,9 +13,10 @@ Instead of transmitting all observed 3D scene objects ($30$–$50$ entities) to 
 
 ```bash
 pip install -r requirements.txt
-python run_benchmark.py      # Multi-seed Pareto benchmark across k in {3, 5, 7, 10, 15}
-python run_ablations.py      # Noise stress test, ablation study, and k=5 error analysis
-python simulate_viewer.py    # Generates interactive HTML5 3D + Top-Down viewer (results/simulation.html)
+python run_benchmark.py           # Multi-seed Pareto benchmark across k in {3, 5, 7, 10, 15}
+python run_ablations.py           # Noise stress test, ablation study, and k=5 error analysis
+python run_scenarios.py           # 4-environment benchmark (corridor, blind corner, lobby, 3D vertical)
+python generate_infinite_demo.py  # Closed-loop 60 FPS infinite procedural demo (results/infinite_demo.html)
 ```
 
 ## Experimental Setup & Hyperparameters
@@ -73,6 +74,19 @@ At $k=7$, **Proposed** reaches **$97.1\% \pm 2.9\%$** Hazard Recall (vs. $79.3\%
 | Total missed hazards | $409 / 2357$ ($17.4\%$) | Across 5 seeds |
 | Unavoidable misses (Budget Overflow $> k$) | **$153$ ($37.4\%$)** | Directly motivates **Graph Coarsening** in Phase B |
 | Scoring / Ranking misses ($\le k$) | $256$ ($62.6\%$) | Top missed classes: `chair` (197), `table` (85), `pedestrian` (77) |
+
+## EXP 4: Multi-Scenario Benchmark ($k=5$, Medium Noise, 5 Seeds)
+
+Includes Personal Safety Bubble ($2.2\text{m}$) patch to eliminate side-swipe blind spots during sharp evasive steering:
+
+| Environment | Distance (Recall / CVaR-5%) | Semantic (Recall / CVaR-5%) | **Proposed (Recall / CVaR-5%)** | Flicker $F_t$ (Prop vs. Dist) |
+| :--- | :---: | :---: | :---: | :---: |
+| **1. Straight Corridor** | $65.8\%$ / $20.5\%$ | $59.0\%$ / $13.6\%$ | **$87.6\% \pm 7.4\%$ / $55.2\%$** | **$0.198$** vs. $0.271$ |
+| **2. 90° Blind Corner** | $64.4\%$ / $3.6\%$ | $65.2\%$ / $12.9\%$ | **$83.7\% \pm 4.9\%$ / $38.3\%$** | **$0.247$** vs. $0.265$ |
+| **3. Crowded Lobby** | $70.3\%$ / $5.3\%$ | $58.7\%$ / $0.0\%$ | **$96.0\% \pm 2.3\%$ / $62.4\%$** | **$0.221$** vs. $0.304$ |
+| **4. 3D Vertical Hazards** | $61.5\%$ / $15.4\%$ | $64.6\%$ / $27.8\%$ | **$88.9\% \pm 7.2\%$ / $63.0\%$** | **$0.189$** vs. $0.262$ |
+
+![Multi-Scenario Benchmark](results/scenarios_benchmark.png)
 
 ## Key Takeaways for Phase B
 

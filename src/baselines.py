@@ -70,6 +70,7 @@ class SemanticSparsifier:
     CLASS_PRIORITY: Dict[str, float] = {
         "pedestrian": 1.0,
         "stair_edge": 0.95,
+        "overhead_sign": 0.92,
         "low_barrier": 0.90,
         "chair": 0.70,
         "table": 0.70,
@@ -79,6 +80,7 @@ class SemanticSparsifier:
         "unknown_ghost": 0.20,
         "wall_painting": 0.05,
         "ceiling_light": 0.05,
+        "floor_mat": 0.05,
     }
 
     def __init__(self) -> None:

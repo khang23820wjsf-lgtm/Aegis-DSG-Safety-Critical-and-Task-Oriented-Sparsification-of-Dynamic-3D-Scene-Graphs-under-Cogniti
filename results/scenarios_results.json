@@ -1,0 +1,170 @@
+{
+  "corridor": {
+    "Random": {
+      "hazard_recall_mean_mean": 0.27515939153439156,
+      "hazard_recall_mean_ci95": 0.016183657615005512,
+      "hazard_recall_cvar5_mean": 0.0,
+      "hazard_recall_cvar5_ci95": 0.0,
+      "flicker_mean_mean": 0.8401894090969722,
+      "flicker_mean_ci95": 0.010733920684918056,
+      "latency_ms_mean_mean": 0.021286165283527225,
+      "latency_ms_mean_ci95": 0.0022454794355691566
+    },
+    "Distance": {
+      "hazard_recall_mean_mean": 0.6578630952380953,
+      "hazard_recall_mean_ci95": 0.05942752835893357,
+      "hazard_recall_cvar5_mean": 0.20507936507936506,
+      "hazard_recall_cvar5_ci95": 0.18880984489921118,
+      "flicker_mean_mean": 0.271421902094171,
+      "flicker_mean_ci95": 0.006568435596977118,
+      "latency_ms_mean_mean": 0.05870549832858766,
+      "latency_ms_mean_ci95": 0.008207100606281369
+    },
+    "Semantic": {
+      "hazard_recall_mean_mean": 0.5899781746031746,
+      "hazard_recall_mean_ci95": 0.10239767499229246,
+      "hazard_recall_cvar5_mean": 0.13611111111111113,
+      "hazard_recall_cvar5_ci95": 0.11878375413714443,
+      "flicker_mean_mean": 0.1793317326930772,
+      "flicker_mean_ci95": 0.023612565484302656,
+      "latency_ms_mean_mean": 0.06320700127010545,
+      "latency_ms_mean_ci95": 0.0027468524805330853
+    },
+    "Proposed": {
+      "hazard_recall_mean_mean": 0.8761064814814814,
+      "hazard_recall_mean_ci95": 0.0736715654132978,
+      "hazard_recall_cvar5_mean": 0.5522222222222222,
+      "hazard_recall_cvar5_ci95": 0.07849222970114166,
+      "flicker_mean_mean": 0.1982993197278911,
+      "flicker_mean_ci95": 0.017543530744200345,
+      "latency_ms_mean_mean": 0.6475313326033453,
+      "latency_ms_mean_ci95": 0.021193787446977894
+    }
+  },
+  "l_turn_corner": {
+    "Random": {
+      "hazard_recall_mean_mean": 0.38029959854959855,
+      "hazard_recall_mean_ci95": 0.0838861063816723,
+      "hazard_recall_cvar5_mean": 0.0,
+      "hazard_recall_cvar5_ci95": 0.0,
+      "flicker_mean_mean": 0.7871975456849405,
+      "flicker_mean_ci95": 0.036441750165315666,
+      "latency_ms_mean_mean": 0.01779599968964855,
+      "latency_ms_mean_ci95": 0.001958616974047735
+    },
+    "Distance": {
+      "hazard_recall_mean_mean": 0.6444620472120471,
+      "hazard_recall_mean_ci95": 0.04067679820164569,
+      "hazard_recall_cvar5_mean": 0.03571428571428571,
+      "hazard_recall_cvar5_ci95": 0.0520443187207894,
+      "flicker_mean_mean": 0.265031345871682,
+      "flicker_mean_ci95": 0.02091574320688526,
+      "latency_ms_mean_mean": 0.04506683413637802,
+      "latency_ms_mean_ci95": 0.0031859428924099387
+    },
+    "Semantic": {
+      "hazard_recall_mean_mean": 0.6515957884707886,
+      "hazard_recall_mean_ci95": 0.06363564997590311,
+      "hazard_recall_cvar5_mean": 0.12873015873015872,
+      "hazard_recall_cvar5_ci95": 0.08734745715591802,
+      "flicker_mean_mean": 0.2350206749366413,
+      "flicker_mean_ci95": 0.026271334312058595,
+      "latency_ms_mean_mean": 0.05199333284205447,
+      "latency_ms_mean_ci95": 0.005925817807017827
+    },
+    "Proposed": {
+      "hazard_recall_mean_mean": 0.8366050246050246,
+      "hazard_recall_mean_ci95": 0.04858558910843234,
+      "hazard_recall_cvar5_mean": 0.38310744810744807,
+      "hazard_recall_cvar5_ci95": 0.16123302196616782,
+      "flicker_mean_mean": 0.24677871148459385,
+      "flicker_mean_ci95": 0.03778154084883197,
+      "latency_ms_mean_mean": 0.5531786668386001,
+      "latency_ms_mean_ci95": 0.07257979758198561
+    }
+  },
+  "crowded_lobby": {
+    "Random": {
+      "hazard_recall_mean_mean": 0.41997101449275365,
+      "hazard_recall_mean_ci95": 0.03733924471157887,
+      "hazard_recall_cvar5_mean": 0.0,
+      "hazard_recall_cvar5_ci95": 0.0,
+      "flicker_mean_mean": 0.7307309941520468,
+      "flicker_mean_ci95": 0.021770003229069274,
+      "latency_ms_mean_mean": 0.018224347403030035,
+      "latency_ms_mean_ci95": 0.0018541653429987796
+    },
+    "Distance": {
+      "hazard_recall_mean_mean": 0.7028985507246376,
+      "hazard_recall_mean_ci95": 0.05500905640432704,
+      "hazard_recall_cvar5_mean": 0.05277777777777778,
+      "hazard_recall_cvar5_ci95": 0.10344444444444444,
+      "flicker_mean_mean": 0.3039083820662768,
+      "flicker_mean_ci95": 0.018576104527805923,
+      "latency_ms_mean_mean": 0.05578817394764527,
+      "latency_ms_mean_ci95": 0.00530229641479474
+    },
+    "Semantic": {
+      "hazard_recall_mean_mean": 0.5874782608695652,
+      "hazard_recall_mean_ci95": 0.08749403283832924,
+      "hazard_recall_cvar5_mean": 0.0,
+      "hazard_recall_cvar5_ci95": 0.0,
+      "flicker_mean_mean": 0.2354803675856308,
+      "flicker_mean_ci95": 0.0142728866115677,
+      "latency_ms_mean_mean": 0.06658800067784994,
+      "latency_ms_mean_ci95": 0.006283908406597132
+    },
+    "Proposed": {
+      "hazard_recall_mean_mean": 0.9603188405797102,
+      "hazard_recall_mean_ci95": 0.02280534436602554,
+      "hazard_recall_cvar5_mean": 0.6238888888888887,
+      "hazard_recall_cvar5_ci95": 0.15919391700023128,
+      "flicker_mean_mean": 0.2213951545530493,
+      "flicker_mean_ci95": 0.014939022622261816,
+      "latency_ms_mean_mean": 0.6980466076334857,
+      "latency_ms_mean_ci95": 0.053868567658770176
+    }
+  },
+  "vertical_hazards": {
+    "Random": {
+      "hazard_recall_mean_mean": 0.24301202501202498,
+      "hazard_recall_mean_ci95": 0.027687168260469876,
+      "hazard_recall_cvar5_mean": 0.0,
+      "hazard_recall_cvar5_ci95": 0.0,
+      "flicker_mean_mean": 0.8567160197412298,
+      "flicker_mean_ci95": 0.013534042969786806,
+      "latency_ms_mean_mean": 0.01839783440421646,
+      "latency_ms_mean_ci95": 0.0026056143937911126
+    },
+    "Distance": {
+      "hazard_recall_mean_mean": 0.615073593073593,
+      "hazard_recall_mean_ci95": 0.07033918246288466,
+      "hazard_recall_cvar5_mean": 0.15373015873015872,
+      "hazard_recall_cvar5_ci95": 0.1086050745693875,
+      "flicker_mean_mean": 0.26246498599439777,
+      "flicker_mean_ci95": 0.015729059298655108,
+      "latency_ms_mean_mean": 0.05577083221093441,
+      "latency_ms_mean_ci95": 0.005825297344204242
+    },
+    "Semantic": {
+      "hazard_recall_mean_mean": 0.6455968614718615,
+      "hazard_recall_mean_ci95": 0.10460774893825886,
+      "hazard_recall_cvar5_mean": 0.27833333333333327,
+      "hazard_recall_cvar5_ci95": 0.06014571195577177,
+      "flicker_mean_mean": 0.13905562224889953,
+      "flicker_mean_ci95": 0.015658676703151186,
+      "latency_ms_mean_mean": 0.06712449860060588,
+      "latency_ms_mean_ci95": 0.011474666840359539
+    },
+    "Proposed": {
+      "hazard_recall_mean_mean": 0.8885677008177009,
+      "hazard_recall_mean_ci95": 0.07155082548628819,
+      "hazard_recall_cvar5_mean": 0.6297402597402597,
+      "hazard_recall_cvar5_ci95": 0.1867271980555281,
+      "flicker_mean_mean": 0.18911564625850338,
+      "flicker_mean_ci95": 0.03720102399238864,
+      "latency_ms_mean_mean": 0.5643906670350891,
+      "latency_ms_mean_ci95": 0.07570373537095029
+    }
+  }
+}
