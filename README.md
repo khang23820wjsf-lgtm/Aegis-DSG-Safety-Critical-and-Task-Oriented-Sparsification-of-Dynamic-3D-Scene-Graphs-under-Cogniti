@@ -88,6 +88,12 @@ Includes Personal Safety Bubble ($2.2\text{m}$) patch to eliminate side-swipe bl
 
 ![Multi-Scenario Benchmark](results/scenarios_benchmark.png)
 
+## Live 60 FPS Closed-Loop Infinite Demo (`results/infinite_demo.html`)
+
+Side-by-side procedural infinite-world comparison at $k=5$ (`medium` noise, $1007$ frames): **Proposed (Aegis-DSG)** reaches **$99.8\%$ Hazard Recall**, lower flicker ($0.358$ vs. $0.365$), and travels **$71\text{m}$ vs. $57\text{m}$** (fewer collisions per meter), whereas **Distance** wastes slots on overhead ceiling lights (`Đèn trần`).
+
+![Closed-Loop Infinite Demo](results/closed_loop_demo.png)
+
 ## Key Takeaways for Phase B
 
 1. **Hysteresis Validated (H3):** Disabling hysteresis increases Jaccard flicker $F_t$ by **$+57\%$** ($0.180 \to 0.283$ under medium noise; $0.337 \to 0.419$ under heavy noise) with negligible impact on recall.
