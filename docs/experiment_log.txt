@@ -1,0 +1,58 @@
+====================================================================
+SO TAY THI NGHIEM PHASE A - DYNAMIC 3D SCENE GRAPH SPARSIFICATION
+Nguoi thuc hien: Truong Hoang Khang
+====================================================================
+
+[MUC TIEU]
+Kiem chung thuat toan Proposed (Dynamic Collision Cone + Asymmetric
+Risk + Hysteresis) truoc khi chuyen sang Phase B (Coarsening + DWA).
+
+--------------------------------------------------------------------
+EXP 0: MOC BAN DAU (5 seeds: 42..46, medium noise, 42 objects)
+- Ket qua tai k=5:
+  + Proposed : Hazard Recall = 87.2% | CVaR-5% = 49.9% | Flicker = 0.180 | Latency = 0.551 ms
+  + Distance : Hazard Recall = 65.3% | CVaR-5% = 16.6% | Flicker = 0.258 | Latency = 0.034 ms
+  + Semantic : Hazard Recall = 59.6% | CVaR-5% = 11.6% | Flicker = 0.180 | Latency = 0.036 ms
+  + Random   : Hazard Recall = 26.6% | CVaR-5% =  0.0% | Flicker = 0.845 | Latency = 0.011 ms
+
+--------------------------------------------------------------------
+EXP 1: THU DO LI DUOI NHIEU (Noise Stress Test tai k=5, 5 seeds)
+- clean  : Distance = 62.0% (CVaR 16.6%, F=0.132) | Proposed = 86.0% (CVaR 57.1%, F=0.090)
+- medium : Distance = 65.3% (CVaR 16.6%, F=0.258) | Proposed = 87.2% (CVaR 49.9%, F=0.180)
+- heavy  : Distance = 68.4% (CVaR 18.1%, F=0.441) | Proposed = 88.6% (CVaR 51.2%, F=0.337)
+- Nhan xet:
+  Proposed vuot troi Distance >20% Hazard Recall va gap ~3 lan CVaR-5%
+  o ca 3 muc nhieu, dong thoi giam manh do nhap nhay Flicker.
+
+--------------------------------------------------------------------
+EXP 2: CAT BO TUNG BO PHAN (Ablation Study tai k=5, 5 seeds)
+[Medium noise]
+  + Full Proposed           : Recall = 87.2% | CVaR-5% = 49.9% | Flicker = 0.180
+  + No Asymmetric (g=0)     : Recall = 87.8% | CVaR-5% = 48.3% | Flicker = 0.157
+  + No Hysteresis (h=0)     : Recall = 87.0% | CVaR-5% = 53.5% | Flicker = 0.283
+  + No Semantic (b=0)       : Recall = 87.9% | CVaR-5% = 54.2% | Flicker = 0.183
+[Heavy noise]
+  + Full Proposed           : Recall = 88.6% | CVaR-5% = 51.2% | Flicker = 0.337
+  + No Asymmetric (g=0)     : Recall = 90.4% | CVaR-5% = 56.5% | Flicker = 0.297
+  + No Hysteresis (h=0)     : Recall = 89.2% | CVaR-5% = 49.2% | Flicker = 0.419
+  + No Semantic (b=0)       : Recall = 88.7% | CVaR-5% = 50.9% | Flicker = 0.340
+- Phat hien quan trong:
+  1) Hysteresis (H3) hoat dong cuc hieu qua: tat h=0 lam Flicker tang +57%
+     (0.180 -> 0.283 o medium; 0.337 -> 0.419 o heavy).
+  2) Lo hong phat hien o gamma=1.5 trong heavy noise: do bong ma ao (FP ghost)
+     co confidence thap (U_v cao), gamma lon vo tinh bom diem cho FP ghost
+     cuop mat slot cua vat can that! Can loc FP / dieu chinh gamma o Phase B.
+
+--------------------------------------------------------------------
+EXP 3: PHAN TICH LOI TAI k=5 (Error Analysis, medium noise, 5 seeds)
+- Tong so frame phan tich       : 600
+- So frame tran ngan sach (>5)  : 110 frames (18.3%)
+- Tong so vat nguy hiem quan sat: 2357 | Bo sot: 409 (17.4%)
+  -> Bat kha khang do tran k (>5): 153 (37.4% tong so loi)
+  -> Loi xep hang / cham diem    : 256 (62.6% tong so loi)
+- Nhom vat bi sot nhieu nhat    : chair (197), table (85), pedestrian (77),
+                                  wall_pillar (30), low_barrier (20)
+- Ket luan:
+  37.4% loi la bat kha khang neu chi chon top-k don le -> Bang chung thep
+  cho thay Phase B bat buoc phai co co che Gom cum sieu nut (Graph Coarsening).
+====================================================================
