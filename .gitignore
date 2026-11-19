@@ -8,3 +8,6 @@ env/
 .mypy_cache/
 .DS_Store
 Thumbs.db
+yolov8n.pt
+data/3dssg/
+results/real_photo_aegis.png

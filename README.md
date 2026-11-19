@@ -13,10 +13,12 @@ Instead of transmitting all observed 3D scene objects ($30$–$50$ entities) to 
 
 ```bash
 pip install -r requirements.txt
-python run_benchmark.py           # Multi-seed Pareto benchmark across k in {3, 5, 7, 10, 15}
-python run_ablations.py           # Noise stress test, ablation study, and k=5 error analysis
-python run_scenarios.py           # 4-environment benchmark (corridor, blind corner, lobby, 3D vertical)
-python generate_infinite_demo.py  # Closed-loop 60 FPS infinite procedural demo (results/infinite_demo.html)
+python run_benchmark.py              # Phase A: Multi-seed Pareto benchmark across k in {3, 5, 7, 10, 15}
+python run_ablations.py              # Phase A: Noise stress test, ablation study, and k=5 error analysis
+python run_scenarios.py              # Phase A: 4-environment benchmark (corridor, blind corner, lobby, 3D vertical)
+python run_prong3_benchmark.py       # Phase B Grand Benchmark: True D-Lite (Dijkstra), Clio (aIB), GNN-GAT, Submodular, Aegis-v2
+python run_mujoco_3dssg.py           # Real 3DSSG Scanned Rooms x MuJoCo 4.0 Rigid-Body Physics
+python run_real_photo_aegis.py       # Real RGB Room Photo -> YOLOv8 + MiDaS 3D Depth -> Aegis-v2
 ```
 
 ## Experimental Setup & Hyperparameters
@@ -93,6 +95,36 @@ Includes Personal Safety Bubble ($2.2\text{m}$) patch to eliminate side-swipe bl
 Side-by-side procedural infinite-world comparison at $k=5$ (`medium` noise, $1007$ frames): **Proposed (Aegis-DSG)** reaches **$99.8\%$ Hazard Recall**, lower flicker ($0.358$ vs. $0.365$), and travels **$71\text{m}$ vs. $57\text{m}$** (fewer collisions per meter), whereas **Distance** wastes slots on overhead ceiling lights (`Đèn trần`).
 
 ![Closed-Loop Infinite Demo](results/closed_loop_demo.png)
+
+## Phase B: Real-Photo 3D Perception, True Baselines, Principled Optimization & MuJoCo Physics
+
+### 1. Real-World Indoor Photo Pipeline (`run_real_photo_aegis.py`)
+Real RGB room photo $\to$ **YOLOv8** + **MiDaS 3D Depth** $\to$ NetworkX 3D Scene Graph $\to$ **Aegis-v2** with dynamic budget ($|V'| \le k,\ S \ge 0.20$) and proactive spatial clustering (`chair_group(x4)` Super-Node):
+
+![Real Photo Aegis-v2](results/real_photo_aegis_v2.png)
+
+### 2. Grand Benchmark: True MIT SPARK Baselines vs. Aegis Family ($k=5$, Unseen Seeds `100..104`)
+
+| Environment | Distance | D-Lite (Dijkstra) | Clio (True aIB) | GNN-Aegis (GAT) | Submod-Aegis ($1-1/e$) | **Aegis-v2 (Phase B)** |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **1. Straight Corridor** | $63.9\%$ ($10.6\%$) | $57.3\%$ ($12.1\%$) | $36.7\%$ ($0.0\%$) | $83.5\%$ ($30.5\%$) | $94.8\%$ ($50.7\%$) | **$100.0\%$ (CVaR $99.4\%$)** |
+| **2. 90° Blind Corner** | $64.7\%$ ($8.7\%$) | $59.9\%$ ($7.2\%$) | $48.5\%$ ($0.0\%$) | $82.5\%$ ($38.0\%$) | $92.5\%$ ($48.4\%$) | **$98.2\%$ (CVaR $78.9\%$)** |
+| **3. Crowded Lobby** | $66.6\%$ ($3.7\%$) | $64.4\%$ ($5.7\%$) | $43.0\%$ ($0.0\%$) | $87.0\%$ ($34.1\%$) | $90.8\%$ ($36.7\%$) | **$99.0\%$ (CVaR $81.4\%$)** |
+| **4. 3D Vertical Hazards** | $65.5\%$ ($19.0\%$) | $62.4\%$ ($19.6\%$) | $48.8\%$ ($2.3\%$) | $88.3\%$ ($56.8\%$) | $89.6\%$ ($43.0\%$) | **$99.9\%$ (CVaR $97.9\%$)** |
+| **Flicker $F_t$ ($\downarrow$)** | `0.248–0.284` | `0.321–0.353` | `0.610–0.706` | `0.190–0.261` | `0.202–0.286` | **`0.161–0.238`** |
+| **Latency (ms/frame $\downarrow$)** | `0.03 ms` | `1.07–2.11 ms` | `9.56–28.89 ms` | `0.39–0.44 ms` | `0.78–1.03 ms` | **`0.41–0.50 ms`** |
+
+### 3. Real 3DSSG Scanned Rooms $\times$ MuJoCo 4.0 Rigid-Body Physics (`run_mujoco_3dssg.py`)
+Evaluated across $10$ real scanned indoor rooms from **3DSSG (Wald et al., CVPR 2020)** compiled into solid 3D rigid-body worlds in **MuJoCo 4.0** ($200\text{ Hz}$ C++ contact solver, $k=5$, medium noise):
+
+| Method | Success Rate | Real Physical Collisions ($\downarrow$) | SPL ($\uparrow$) | Hazard Coverage ($\uparrow$) |
+| :--- | :---: | :---: | :---: | :---: |
+| **D-Lite\*** | $50.0\%$ | $1.70$ | $0.489$ | $77.6\%$ |
+| **Clio\*** | $50.0\%$ | $0.90$ | $0.499$ | $73.0\%$ |
+| **Distance** | $50.0\%$ | $0.70$ | $0.499$ | $85.9\%$ |
+| **Aegis-v2 (Ours)** | **$50.0\%$** | **$0.60$** | $0.493$ | **$100.0\%$** |
+
+Interactive viewers included in `results/`: `phase_b_demo.html` (60 FPS Coarsening + DWA), `mujoco_3dssg_viewer.html` (360° 3D MuJoCo playback), and `space_to_graph.png` (Hydra ESDF $\to$ GVD $\to$ Rooms visualization).
 
 ## Key Takeaways for Phase B
 
