@@ -21,8 +21,8 @@ import numpy as np
 import torch
 from ultralytics import YOLO
 
+from src.aegis_core import AegisConfig, AegisDSG
 from src.dsg_generator import AgentState
-from src.phase_b.aegis_v2 import AegisV2Sparsifier
 
 
 # Real-world COCO class priors for structural importance C_v & physical hazard severity
@@ -80,18 +80,53 @@ def estimate_depth_map(img_rgb: np.ndarray) -> np.ndarray:
         return np.repeat(ys, w, axis=1)
 
 
+def _box_overlap_ratio(b1: Tuple[int, int, int, int], b2: Tuple[int, int, int, int]) -> Tuple[float, float]:
+    """Return (IoU, max_containment) between two 2D boxes (x1, y1, x2, y2)."""
+    ix1, iy1 = max(b1[0], b2[0]), max(b1[1], b2[1])
+    ix2, iy2 = min(b1[2], b2[2]), min(b1[3], b2[3])
+    inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+    if inter == 0:
+        return 0.0, 0.0
+    a1 = max(1, (b1[2] - b1[0]) * (b1[3] - b1[1]))
+    a2 = max(1, (b2[2] - b2[0]) * (b2[3] - b2[1]))
+    iou = inter / float(a1 + a2 - inter)
+    contain = inter / float(min(a1, a2))
+    return iou, contain
+
+
 def build_3d_scene_graph_from_photo(
     img_rgb: np.ndarray,
     yolo_model: YOLO,
     depth_map: np.ndarray,
-    conf_thresh: float = 0.22,
+    conf_thresh: float = 0.25,
 ) -> Tuple[nx.DiGraph, Dict[str, Tuple[int, int, int, int]]]:
-    """Run YOLOv8 + Depth lifting to build a real NetworkX 3D Scene Graph G^obs."""
+    """Run YOLOv8 + Duplicate-Box Deduplication + Depth lifting to build a real 3D Scene Graph."""
     h, w = img_rgb.shape[:2]
-    fx = fy = 0.85 * w  # Approximate standard indoor camera focal length
+    fx = fy = 0.85 * w
     cx_img, cy_img = w / 2.0, h / 2.0
 
     results = yolo_model.predict(img_rgb, conf=conf_thresh, verbose=False)[0]
+    raw_dets = []
+    for box in results.boxes:
+        x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].cpu().numpy()]
+        conf = float(box.conf[0].cpu().numpy())
+        label = str(yolo_model.names[int(box.cls[0].cpu().numpy())])
+        raw_dets.append((conf, label, (x1, y1, x2, y2)))
+
+    # Deduplicate overlapping / nested same-class detections (prevents 1 chair -> 3 boxes!)
+    raw_dets.sort(key=lambda t: t[0], reverse=True)
+    clean_dets = []
+    for conf, label, b in raw_dets:
+        is_dup = False
+        for _, klbl, kb in clean_dets:
+            if klbl == label:
+                iou, contain = _box_overlap_ratio(b, kb)
+                if iou > 0.42 or contain > 0.70:
+                    is_dup = True
+                    break
+        if not is_dup:
+            clean_dets.append((conf, label, b))
+
     g_obs = nx.DiGraph()
     g_obs.add_node(
         "room_real_photo",
@@ -108,11 +143,7 @@ def build_3d_scene_graph_from_photo(
     bboxes_2d: Dict[str, Tuple[int, int, int, int]] = {}
     obj_ids: List[str] = []
 
-    for i, box in enumerate(results.boxes):
-        x1, y1, x2, y2 = [int(v) for v in box.xyxy[0].cpu().numpy()]
-        conf = float(box.conf[0].cpu().numpy())
-        cls_id = int(box.cls[0].cpu().numpy())
-        label = str(yolo_model.names[cls_id])
+    for i, (conf, label, (x1, y1, x2, y2)) in enumerate(clean_dets):
 
         # Robust median depth inside center 50% of bounding box
         bx1, bx2 = max(0, x1 + (x2 - x1) // 4), min(w, x2 - (x2 - x1) // 4)
@@ -162,41 +193,6 @@ def build_3d_scene_graph_from_photo(
     return g_obs, bboxes_2d
 
 
-def _cluster_adjacent_same_class(
-    entities,
-    g_obs: nx.DiGraph,
-    gap_thresh_m: float = 0.85,
-):
-    """Proactively merge adjacent same-class static objects (e.g. dining chairs) into 1 Super-Node."""
-    from src.phase_b.coarsening import CompressedEntity, _merge_pair, _xy_edge_gap
-
-    out = list(entities)
-    merge_idx = 0
-    changed = True
-    while changed:
-        changed = False
-        for i in range(len(out)):
-            for j in range(i + 1, len(out)):
-                a, b = out[i], out[j]
-                base_a = a.label.split("_group")[0]
-                base_b = b.label.split("_group")[0]
-                is_dyn_a = any(g_obs.nodes[m].get("is_dynamic", False) for m in a.member_ids if m in g_obs)
-                is_dyn_b = any(g_obs.nodes[m].get("is_dynamic", False) for m in b.member_ids if m in g_obs)
-                if base_a == base_b and not is_dyn_a and not is_dyn_b:
-                    if _xy_edge_gap(a, b) <= gap_thresh_m:
-                        merged = _merge_pair(a, b, merge_idx)
-                        merged.label = f"{base_a}_group(x{len(merged.member_ids)})"
-                        merge_idx += 1
-                        out = [e for idx, e in enumerate(out) if idx not in (i, j)]
-                        out.append(merged)
-                        changed = True
-                        break
-            if changed:
-                break
-    out.sort(key=lambda e: e.score, reverse=True)
-    return out
-
-
 def visualize_real_photo_aegis(
     img_rgb: np.ndarray,
     g_obs: nx.DiGraph,
@@ -205,21 +201,13 @@ def visualize_real_photo_aegis(
     out_path: Path,
     tau_min: float = 0.20,
 ) -> None:
-    """Run AegisV2Sparsifier with dynamic floor threshold (S >= tau_min) + spatial clustering."""
+    """Run unified AegisDSG (src/aegis_core.py) directly on the real-photo 3D Scene Graph."""
     agent = AgentState(pos=np.array([0.0, 0.0, 1.35]), vel=np.array([0.0, 1.35, 0.0]))
-    aegis = AegisV2Sparsifier()
+    aegis = AegisDSG(AegisConfig(tau_min=tau_min, min_navigable_gap_m=0.80, proactive_same_class_merge=True))
     aegis.reset()
-    # Run 2 ticks so persistent real detections pass the 1-frame transient FP filter
-    _ = aegis.select_entities(g_obs, agent, max(k, 8))
-    raw_entities = aegis.select_entities(g_obs, agent, max(k, 8))
-
-    # 1. Dynamic thresholding: drop low-importance clutter (S < tau_min) unless inside 2.2m Safety Bubble
-    filtered = [
-        e for e in raw_entities
-        if e.score >= tau_min or float(np.linalg.norm(e.pos[:2])) <= 2.2
-    ]
-    # 2. Proactively group adjacent same-class static objects (e.g., 3 dining chairs -> chair_group)
-    entities = _cluster_adjacent_same_class(filtered, g_obs)[:k]
+    # Run 2 ticks so persistent real detections pass Layer 1 Temporal Belief Filter
+    _ = aegis.compress(g_obs, agent, k)
+    entities = aegis.compress(g_obs, agent, k)
 
     covered_ids = set().union(*(e.member_ids for e in entities)) if entities else set()
     obj_ids = [n for n, d in g_obs.nodes(data=True) if d.get("layer") == "object"]
@@ -252,14 +240,16 @@ def visualize_real_photo_aegis(
     ax2.imshow(dimmed)
 
     used_label_y: List[Tuple[int, int]] = []
+    img_w = img_rgb.shape[1]
 
     def place_label(x: int, y: int) -> Tuple[int, int]:
-        ly = max(14, y - 5)
+        lx = max(6, min(x, img_w - 210))
+        ly = max(16, y - 5)
         for ux, uy in used_label_y:
-            if abs(x - ux) < 130 and abs(ly - uy) < 22:
+            if abs(lx - ux) < 130 and abs(ly - uy) < 22:
                 ly = uy + 20
-        used_label_y.append((x, ly))
-        return x, ly
+        used_label_y.append((lx, ly))
+        return lx, ly
 
     for ent in entities:
         if ent.is_super_node:

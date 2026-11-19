@@ -1,0 +1,105 @@
+"""Unit tests verifying every mathematical and safety guarantee of AegisDSG (src/aegis_core.py)."""
+
+from __future__ import annotations
+
+import unittest
+import networkx as nx
+import numpy as np
+
+from src.aegis_core import AegisConfig, AegisDSG
+from src.dsg_generator import AgentState
+
+
+def _make_graph(objs: list[dict]) -> nx.DiGraph:
+    g = nx.DiGraph()
+    for o in objs:
+        g.add_node(
+            o["id"],
+            layer="object",
+            label=o.get("label", "chair"),
+            pos=np.array(o["pos"], dtype=float),
+            size=np.array(o.get("size", [0.5, 0.5, 0.8]), dtype=float),
+            vel=np.array(o.get("vel", [0.0, 0.0, 0.0]), dtype=float),
+            confidence=o.get("conf", 0.95),
+            structural_importance=o.get("cv", 0.15),
+            hazard_severity=o.get("haz", 0.85),
+            is_dynamic=o.get("dyn", False),
+        )
+    return g
+
+
+class TestAegisCore(unittest.TestCase):
+    def setUp(self) -> None:
+        self.agent = AgentState(pos=np.array([2.0, 0.0, 0.85]), vel=np.array([0.0, 1.35, 0.0]))
+
+    def test_edge_cases_empty_and_zero_k(self) -> None:
+        aegis = AegisDSG()
+        self.assertEqual(aegis.compress(nx.DiGraph(), self.agent, k=5), [])
+        g = _make_graph([{"id": "c1", "pos": [2.0, 2.0, 0.4]}])
+        self.assertEqual(aegis.compress(g, self.agent, k=0), [])
+
+    def test_layer1_fp_ghost_damping_and_object_permanence(self) -> None:
+        aegis = AegisDSG()
+        # Frame 1: real high-conf obstacle + 1-frame low-conf FP ghost at same risk distance
+        g1 = _make_graph([
+            {"id": "real_chair", "pos": [2.0, 2.5, 0.4], "conf": 0.92},
+            {"id": "fp_ghost", "pos": [2.1, 2.5, 0.4], "conf": 0.30, "label": "unknown_ghost"},
+        ])
+        out1 = aegis.compress(g1, self.agent, k=1)
+        self.assertEqual(len(out1), 1)
+        self.assertEqual(out1[0].entity_id, "real_chair")
+
+        # Frame 2: real_chair seen again -> becomes persistent
+        g2 = _make_graph([{"id": "real_chair", "pos": [2.0, 2.5, 0.4], "conf": 0.90}])
+        _ = aegis.compress(g2, self.agent, k=3)
+
+        # Frame 3: real_chair temporarily occluded (missing from g3) -> Object Permanence retains it!
+        out3 = aegis.compress(nx.DiGraph(), self.agent, k=3)
+        self.assertEqual(len(out3), 1)
+        self.assertEqual(out3[0].entity_id, "real_chair")
+        self.assertTrue(out3[0].is_occluded_memory)
+
+    def test_layer2_no_side_swipe_blind_spot_and_height_filter(self) -> None:
+        aegis = AegisDSG()
+        # Side chair 0.9m to agent's right (outside ±38° cone!) vs harmless overhead light & far door
+        g = _make_graph([
+            {"id": "side_chair", "pos": [2.9, 0.4, 0.4], "conf": 0.90, "haz": 0.85},
+            {"id": "ceiling_light", "pos": [2.0, 1.5, 2.75], "size": [0.5, 0.5, 0.12], "haz": 0.0, "cv": 0.05},
+            {"id": "far_door", "pos": [2.0, 9.0, 1.05], "size": [0.2, 1.0, 2.1], "haz": 0.3, "cv": 0.95},
+        ])
+        out = aegis.compress(g, self.agent, k=1)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].entity_id, "side_chair")
+
+    def test_layer3_free_space_preserving_coarsening(self) -> None:
+        aegis = AegisDSG(AegisConfig(min_navigable_gap_m=0.70, proactive_same_class_merge=True))
+        # c1 & c2 touch (gap = 0.10m < 0.70m -> MUST merge); c3 is 1.2m away (gap >= 0.70m -> MUST NOT merge!)
+        g = _make_graph([
+            {"id": "c1", "label": "chair", "pos": [1.0, 2.0, 0.4], "size": [0.5, 0.5, 0.8]},
+            {"id": "c2", "label": "chair", "pos": [1.6, 2.0, 0.4], "size": [0.5, 0.5, 0.8]},
+            {"id": "c3", "label": "chair", "pos": [3.4, 2.0, 0.4], "size": [0.5, 0.5, 0.8]},
+        ])
+        out = aegis.compress(g, self.agent, k=5)
+        self.assertEqual(len(out), 2)
+        super_nodes = [e for e in out if e.is_super_node]
+        self.assertEqual(len(super_nodes), 1)
+        self.assertEqual(super_nodes[0].member_ids, {"c1", "c2"})
+
+    def test_layer4_dynamic_budget_drops_low_score_clutter(self) -> None:
+        aegis = AegisDSG(AegisConfig(tau_min=0.15))
+        # Only 1 real hazard + 4 distant harmless clutter items (S << 0.15) with k=5
+        g = _make_graph([
+            {"id": "real_haz", "pos": [2.0, 2.0, 0.5], "haz": 0.95},
+            {"id": "junk_1", "pos": [0.2, 10.0, 2.2], "haz": 0.0, "cv": 0.05},
+            {"id": "junk_2", "pos": [3.8, 10.5, 2.2], "haz": 0.0, "cv": 0.05},
+            {"id": "junk_3", "pos": [0.2, 11.0, 2.7], "haz": 0.0, "cv": 0.05},
+            {"id": "junk_4", "pos": [3.8, 11.5, 2.7], "haz": 0.0, "cv": 0.05},
+        ])
+        out = aegis.compress(g, self.agent, k=5)
+        # Dynamic budget stops at 1 entity instead of padding 4 junk items to fill k=5!
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].entity_id, "real_haz")
+
+
+if __name__ == "__main__":
+    unittest.main()
