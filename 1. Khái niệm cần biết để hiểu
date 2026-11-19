@@ -7,7 +7,8 @@ Ta có 1 ví dụ đơn giản về 2 lỗi sai:
 	Hậu quả: Người dùng có thể bị đâm trọng thương hoặc tử vong. Chi phí phải trả là tàn khốc
 Nói đơn giản:
 	Cost(FalseNegative) > Cost(FalsePositive)
-Nếu dùng công thức đối xứng thông thường lấy điểm nguy hiểm nhất  * với độ tin cậy (Qv *Qr), thì một vật cản nguy hiểm bị che khuất làm một phần (làm Qv tụt xuống 0.3) điểm của nó sẽ bị kéo tụt xuống và bị thuật toán xóa mất -? dính bẫy False Negative:
+Nếu dùng công thức đối xứng thông thường lấy điểm nguy hiểm nhất  * với độ tin cậy (Qv *Qr), thì một vật cản nguy hiểm bị che khuất làm một phần (làm Qv tụt xuống 0.3) điểm của nó sẽ bị kéo tụt xuống và bị thuật toán xóa mất -? dính bẫy False Negative:	;
+
 	Vì vậy trong hàm đã được biến đổi:
 		Sv = a* Rv * (1 + y * Uv * I(Rv >Thaz)) + B.Qv.Cv
 	Khi một vật thể nằm trong phễu va chạm nguy hiểm (Rv > Thaz), độ bất định nhận thức Uv = 1-Qv, không làm giảm điểm mà lại cộng thêm điểm ưu tiên (nhờ hệ số Y) nghĩa là : càng không chắc chắn vật cản ngay trước mũi, hệ thống càng phải giữ nó lại để cảnh báo thận trọng thay vì xóa đi
@@ -30,3 +31,19 @@ Hiện tại trong phase A (ta dùng mô phỏng) :
 		Qv (độ nhìn rõ) : Trong mô phỏng. Nó mô phỏng đúng vật lý của mắt kính : vật đứng ngay chính giữa mặt ở gần thì Qv = (sắp xỉ) 0.95 : vật dạt ra rìa tầm nhìn hoặc ở xa, trời nhiễu thì Qv còn từ 0.2-> 0.4
 		Cv( độ chỉ đường) : Tra từ bảng từ điển loại vật thể (OBJECT_SPECS trong dsg_generator.py): cửa ra vào / mép cầu thang được gán sẵn 0.90–0.95, cột tường 0.70, ghế 0.15, tranh treo tường / đèn trần 0.05.
 Nếu 
+- Ở ngoài đời thật ta sẽ đo bằng cái gì?
+
+	Tọa độ và vận tốc (để tính R): Dùng cụm camera chiều sâu và LiDAR  (như Intel RealSense hoặc LiDAR trên Iphone/ Mua ở ngoài) + Thuật toán Slam / Kalman Filter (Phần này Hydra/ Kimera) đo khoảng cách và tốc độ di chuyển
+	Qv (độ rõ) : Bất kỳ con AI nhận diện vật thể nào cũng làm được (Yolo, Mask2Former, hay Clio) ki khoanh được cái ghế đều tự động đưa ra một con số confidence từ 0 đến 1 - Ta có thể lấy số đó mà xài)
+	Cv (độ chỉ đường) : Ta dùng Yolo nhận diện vật thể sau đó tra theo bảng cấu trúc theo nhãn hoặc sau này dùng mô hình ngôn ngữ (LLM/VLM) tự chấm điểm tùy theo người dùng đang muốn đi đâu ? (ví dụ "tìm nhà vệ sinh" thì biển WC lên 1.0) 
+Thang đo để chấm điểm?
+	Phần lớn điểm nguy hiểm Rv , trong thuật toán của tôi chấm điểm bằng 4 thước đo vật lý:
+		1. Chiều cao z: Vật nằm cao hơn đầu người (>1.85m) thì tự động = 0
+		2. Thời gian tới va chạm  (TTC) : Mấy giây nữa thì đụng nhau
+		3. Khoảng cách sượt qua tối thiểu (dmin) : Nếu cả hai giữ nguyên hướng, lúc gần nhau nhất còn cách nhau mấy mét.
+		4. Góc lệch phễu (+- 35 độ) : Nằm ngay trước mũi hay lệch sang bên lề
+	Phần 2 : Mức độ nguy hiểm của từng loại đồ vật (Hazard_severity và Cv) _ Chấm theo thang nào?
+		Về trọng số rủi ro riêng của từng vật thể, ta quy chuẩn về thang chuẩn hóa [0,1] theo 3 tầng hậu quả va chạm (Physical Consequence Tiers) trong thực tế hỗ trợ người Mù
+			Nhóm vô hại (0.0) : Không nằm trong không gian di chuyển
+			Nhóm thấp - trung bình (0.3 -0.5) : Vật cố định lớn sát tường hoặc điểm neo (door,shelf)
+			Nhóm nguy hiểm cao (0.75 - 1) : Vật dễ gây vấp ngã (Chair = 0.75 , table = 0.8) vật thể động tự lao tới (pedestr
