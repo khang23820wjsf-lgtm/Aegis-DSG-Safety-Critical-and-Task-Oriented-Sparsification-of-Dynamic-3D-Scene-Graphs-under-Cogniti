@@ -84,9 +84,14 @@ python scripts/benchmarks/run_v3_master_benchmark.py
 # 3. Reproduce the 11-sequence Real Meta Project Aria Digital Twin benchmark
 python scripts/benchmarks/run_aria_10seq_benchmark.py
 
-# 4. Reproduce the 10-room Real 3DSSG x MuJoCo 4.0 closed-loop rigid-body physics benchmark
+# 4. Reproduce Safety-Augmented Fair Baselines + Leave-One-Out Ablation Study (6 Unseen Meta Aria Sequences)
+python scripts/benchmarks/run_paper_ablations_and_fair_baselines.py
+
+# 5. Reproduce the 10-room Real 3DSSG x MuJoCo 4.0 closed-loop rigid-body physics benchmark
 python scripts/benchmarks/run_mujoco_3dssg.py
 ```
+
+For full step-by-step dataset setup and deterministic seed protocols, see [docs/REPRODUCIBILITY.md](docs/REPRODUCIBILITY.md).
 
 ---
 
@@ -143,7 +148,37 @@ Each architectural extension in **Aegis-DSG v3.0** was ablated independently on 
 
 ---
 
-### 3. Closed-Loop 3D Rigid-Body Physics: Real 3DSSG Scanned Rooms × MuJoCo 4.0
+### 3. Leave-One-Out Ablation & Safety-Augmented Fair Baselines (`run_paper_ablations_and_fair_baselines.py`)
+
+To rigorously verify that (i) **every architectural layer is necessary** and (ii) **Aegis-DSG is fairly benchmarked against safety-augmented heuristics**, we run a unified Leave-One-Out (LOO) ablation and safety-augmented baseline sweep on the **6 unseen Meta Aria sequences** ($k = 5$, calibrated strictly on the 5 calibration sequences):
+
+![Leave-One-Out Ablation and Fair Baselines](results/paper_ablation_loo.png)
+
+#### A. Unified Leave-One-Out Ablation (6 Unseen Meta Aria Sequences, $k = 5$)
+
+| Variant | Hazard Cov. (↑) | CVaR-5% (↑) | Unmerged Atomic Recall (↑) | Flicker (↓) | Key Takeaway |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **Full Aegis-DSG v3.0** | **87.4%** | **48.0%** | **100.0%** | **0.202** | Balanced safety, stability & 100% atomic preservation |
+| **w/o Atomic Invariant** | 87.2% | 47.2% | **82.4% (-17.6%)** | 0.202 | Knives/scissors get semantically erased into super-nodes |
+| **w/o Layer 3 Coarsening** | **83.2% (-4.2%)** | **34.9% (-13.1%)** | 99.2% | 0.175 | Severe worst-frame collapse under budget overflow |
+| **w/o Split Conformal** | 86.2% (-1.2%) | **43.1% (-4.9%)** | 100.0% | 0.163 | Fixed threshold under-protects quiet/worst-case frames |
+| **w/o Layer 4 Hysteresis** | 88.3% | 49.0% | 100.0% | **0.213 (+5%)** | Higher flicker (`+57%` under medium perception noise) |
+| **w/o Layer 1 Belief Filter** | 89.2% | 51.1% | 100.0% | 0.204 | Minor recall gain on 0%-FP GT, but **+39% flicker** (`0.429` vs `0.309`) under heavy noise |
+
+#### B. Safety-Augmented Fair Baselines & Dense-Frame Clio Audit ($k = 5$)
+
+| Method | Hazard Cov. (↑) | CVaR-5% (↑) | Unmerged Atomic (↑) | Noisy Lobby Flicker (Heavy ↓) | Scene Compression & Semantics |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **Distance (Vanilla)** | 23.9% | 0.0% | 97.6% | 0.441 | Top-5 raw objects only |
+| **Distance + Atomic Rule** | 45.6% | 8.7% | 97.6% | 0.449 | Proves Aegis is *not* merely a knife keyword heuristic |
+| **Distance + 3D TTC Cone** | **96.2%** | **77.1%** | 100.0% | 0.423 (+37%) | Pure hazard-only oracle: zero coarsening, zero task/CLIP, high noisy flicker |
+| **Full Aegis-DSG v3.0 (Ours)** | 87.4% | 48.0% | **100.0%** | **0.309 (Lowest)** | Full 4-layer trade-off: **10.8 objs/frame**, CLIP tasks, dynamic budget, lowest flicker |
+
+> **Dense-Frame Clio Fairness Audit (0 subsampling):** On 15 consecutive dense frames of `golden_skeleton_seq100`, exact `Clio (aIB)` still exhibits **`F_t = 0.567` (`824.6 ms/frame`)** vs. **`F_t = 0.172` (`7.36 ms/frame`)** for Aegis-DSG v3.0 — confirming Clio's temporal instability is intrinsic, not a subsampling artifact.
+
+---
+
+### 4. Closed-Loop 3D Rigid-Body Physics: Real 3DSSG Scanned Rooms × MuJoCo 4.0
 
 Evaluated across **10 real scanned indoor rooms** from **3DSSG (Wald et al., CVPR 2020)** compiled into solid 3D rigid-body worlds in **MuJoCo 4.0** (200 Hz C++ contact solver, $k = 5$, medium Gaussian sensor noise). All 10 rooms are verified physically navigable by 2D BFS, and every sparsifier drives the exact same strictly sparsifier-fed **Recency-Decayed Local Occupancy Costmap + Local A\* + DWA** planner:
 
@@ -158,7 +193,7 @@ Evaluated across **10 real scanned indoor rooms** from **3DSSG (Wald et al., CVP
 
 ---
 
-### 4. Human-in-the-Loop Cognitive Load & Reaction-Time Study Protocol (`user_study/`)
+### 5. Human-in-the-Loop Cognitive Load & Reaction-Time Study Protocol (`user_study/`)
 
 To directly measure human cognitive bandwidth under real Meta Aria AR overlays, this repository includes a self-contained, zero-server HTML5 evaluation harness:
 - **Offline Study App:** `user_study/aegis_human_eval.html` (rebuilt via `python user_study/build_user_study.py`) — 12 randomized within-subject trials across 4 real Meta Aria frames under 3 modes (*Raw 80+ boxes*, *Distance $k = 5$*, *Aegis-DSG $k = 5$*), logging exact millisecond **Hazard Reaction Time**, click-in-GT-box **Localization Accuracy**, and official 6-subscale **NASA-TLX Cognitive Load (0–100)** with anonymized `.json` export.

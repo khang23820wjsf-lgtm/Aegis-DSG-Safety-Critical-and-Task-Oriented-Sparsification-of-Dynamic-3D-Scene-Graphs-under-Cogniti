@@ -1,0 +1,142 @@
+{
+  "conformal_calibration": {
+    "alpha": 0.05,
+    "target_coverage": 0.95,
+    "num_calib_frames": 1736,
+    "q_hat_nonconformity": 0.9822,
+    "calibrated_tau_min": 0.0178,
+    "calibrated_tau_haz": 0.08,
+    "calib_empirical_coverage": 0.9505
+  },
+  "part_a_fair_baselines": {
+    "Distance (Vanilla)": {
+      "cov_pct": 23.9,
+      "cvar5_pct": 0.0,
+      "atomic_unmerged_pct": 94.0,
+      "atomic_count": 50,
+      "unattended_gaze_pct": 22.7,
+      "flicker": 0.149,
+      "latency_ms": 0.09,
+      "atomic_unmerged_with_kitchen_pct": 97.6,
+      "atomic_with_kitchen_count": 125
+    },
+    "Distance + Atomic Rule": {
+      "cov_pct": 45.6,
+      "cvar5_pct": 8.7,
+      "atomic_unmerged_pct": 94.0,
+      "atomic_count": 50,
+      "unattended_gaze_pct": 45.0,
+      "flicker": 0.137,
+      "latency_ms": 0.11,
+      "atomic_unmerged_with_kitchen_pct": 97.6,
+      "atomic_with_kitchen_count": 125
+    },
+    "Distance + 3D TTC Cone": {
+      "cov_pct": 96.2,
+      "cvar5_pct": 77.1,
+      "atomic_unmerged_pct": 100.0,
+      "atomic_count": 50,
+      "unattended_gaze_pct": 94.4,
+      "flicker": 0.132,
+      "latency_ms": 0.64,
+      "atomic_unmerged_with_kitchen_pct": 100.0,
+      "atomic_with_kitchen_count": 125
+    },
+    "Full Aegis-DSG v3.0": {
+      "cov_pct": 87.4,
+      "cvar5_pct": 48.0,
+      "atomic_unmerged_pct": 100.0,
+      "atomic_count": 50,
+      "unattended_gaze_pct": 87.4,
+      "flicker": 0.202,
+      "latency_ms": 5.09,
+      "atomic_unmerged_with_kitchen_pct": 100.0,
+      "atomic_with_kitchen_count": 125
+    }
+  },
+  "clio_dense_audit": {
+    "clio_flicker_dense": 0.567,
+    "clio_latency_ms": 824.6,
+    "aegis_flicker_dense": 0.172,
+    "aegis_latency_ms": 7.36
+  },
+  "part_b_loo_ablation": {
+    "Full Aegis-DSG v3.0": {
+      "cov_pct": 87.4,
+      "cvar5_pct": 48.0,
+      "atomic_unmerged_pct": 100.0,
+      "atomic_count": 50,
+      "unattended_gaze_pct": 87.4,
+      "flicker": 0.202,
+      "latency_ms": 5.08,
+      "atomic_unmerged_with_kitchen_pct": 100.0,
+      "atomic_with_kitchen_count": 125
+    },
+    "w/o Split Conformal": {
+      "cov_pct": 86.2,
+      "cvar5_pct": 43.1,
+      "atomic_unmerged_pct": 100.0,
+      "atomic_count": 50,
+      "unattended_gaze_pct": 86.3,
+      "flicker": 0.163,
+      "latency_ms": 4.8,
+      "atomic_unmerged_with_kitchen_pct": 100.0,
+      "atomic_with_kitchen_count": 125
+    },
+    "w/o Real 3D Eye-Gaze": {
+      "cov_pct": 87.4,
+      "cvar5_pct": 48.0,
+      "atomic_unmerged_pct": 100.0,
+      "atomic_count": 50,
+      "unattended_gaze_pct": 87.3,
+      "flicker": 0.208,
+      "latency_ms": 4.92,
+      "atomic_unmerged_with_kitchen_pct": 100.0,
+      "atomic_with_kitchen_count": 125
+    },
+    "w/o Layer 3 Coarsening": {
+      "cov_pct": 83.2,
+      "cvar5_pct": 34.9,
+      "atomic_unmerged_pct": 98.0,
+      "atomic_count": 50,
+      "unattended_gaze_pct": 81.9,
+      "flicker": 0.175,
+      "latency_ms": 3.15,
+      "atomic_unmerged_with_kitchen_pct": 99.2,
+      "atomic_with_kitchen_count": 125
+    },
+    "w/o Layer 4 Hysteresis": {
+      "cov_pct": 88.3,
+      "cvar5_pct": 49.0,
+      "atomic_unmerged_pct": 100.0,
+      "atomic_count": 50,
+      "unattended_gaze_pct": 88.3,
+      "flicker": 0.213,
+      "latency_ms": 5.04,
+      "atomic_unmerged_with_kitchen_pct": 100.0,
+      "atomic_with_kitchen_count": 125
+    },
+    "w/o Atomic Invariant": {
+      "cov_pct": 87.2,
+      "cvar5_pct": 47.2,
+      "atomic_unmerged_pct": 78.0,
+      "atomic_count": 50,
+      "unattended_gaze_pct": 87.2,
+      "flicker": 0.202,
+      "latency_ms": 4.99,
+      "atomic_unmerged_with_kitchen_pct": 82.4,
+      "atomic_with_kitchen_count": 125
+    },
+    "w/o Layer 1 Belief Filter": {
+      "cov_pct": 89.2,
+      "cvar5_pct": 51.1,
+      "atomic_unmerged_pct": 100.0,
+      "atomic_count": 50,
+      "unattended_gaze_pct": 89.4,
+      "flicker": 0.204,
+      "latency_ms": 5.08,
+      "atomic_unmerged_with_kitchen_pct": 100.0,
+      "atomic_with_kitchen_count": 125
+    }
+  }
+}
