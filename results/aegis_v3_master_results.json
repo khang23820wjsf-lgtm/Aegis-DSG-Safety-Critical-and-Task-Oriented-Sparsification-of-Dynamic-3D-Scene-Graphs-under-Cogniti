@@ -1,0 +1,87 @@
+{
+  "conformal_and_gaze": {
+    "conformal_report": {
+      "alpha": 0.05,
+      "target_coverage": 0.95,
+      "num_calib_frames": 1736,
+      "q_hat_nonconformity": 0.9822,
+      "calibrated_tau_min": 0.0178,
+      "calibrated_tau_haz": 0.08,
+      "calib_empirical_coverage": 0.9505
+    },
+    "v2_fixed_unseen6": {
+      "overall_cov": 0.8590674603174603,
+      "cvar5_mean": 0.42777777777777765,
+      "unattended_cov": 0.859351620947631,
+      "unattended_count": 2005,
+      "latency_ms": 7.077204499801155
+    },
+    "v3_gaze_unseen6": {
+      "overall_cov": 0.861373015873016,
+      "cvar5_mean": 0.43111111111111106,
+      "unattended_cov": 0.8628428927680798,
+      "unattended_count": 2005,
+      "latency_ms": 14.810200168382531
+    },
+    "v3_conformal_unseen6": {
+      "overall_cov": 0.8754880952380951,
+      "cvar5_mean": 0.48,
+      "unattended_cov": 0.8753117206982544,
+      "unattended_count": 2005,
+      "latency_ms": 15.612881833221763
+    },
+    "decoration_seq135_cvar5_v2": 0.0,
+    "decoration_seq135_cvar5_v3": 0.4
+  },
+  "obb_and_mujoco": {
+    "supernodes_measured": 0,
+    "obb_area_reduction_pct": 0.0,
+    "mujoco_sr_pct": 90.0,
+    "mujoco_collisions": 0.5,
+    "mujoco_spl": 0.808,
+    "mujoco_coverage_pct": 100.0
+  },
+  "hierarchical_zoom_k5": {
+    "flat_avg_objects_summarized": 7.6,
+    "hier_avg_objects_summarized": 10.8,
+    "place_layer_summaries_emitted": 139
+  },
+  "zero_shot_clip": {
+    "real_clip_loaded": true,
+    "vocab_size": 56,
+    "offline_warmup_ms": 2557.7,
+    "top5_task_matches": [
+      [
+        "kitchen utensil",
+        1.0
+      ],
+      [
+        "food processor",
+        1.0
+      ],
+      [
+        "dishrack",
+        1.0
+      ],
+      [
+        "food object",
+        0.793
+      ],
+      [
+        "coffee maker",
+        0.678
+      ]
+    ],
+    "runtime_ms_per_frame": 20.07,
+    "hazard_coverage_pct": 84.9,
+    "flicker": 0.054,
+    "cross_domain_probe": {
+      "scalpel": true,
+      "welding torch": true,
+      "sulfuric acid flask": true,
+      "high voltage panel": true,
+      "plush teddy bear": false,
+      "cardboard box": false
+    }
+  }
+}

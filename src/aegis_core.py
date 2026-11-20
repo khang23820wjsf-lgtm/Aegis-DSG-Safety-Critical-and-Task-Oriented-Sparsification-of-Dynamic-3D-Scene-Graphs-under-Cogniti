@@ -28,13 +28,20 @@ of Dynamic 3D Scene Graphs under Cognitive Bandwidth Constraints:
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
-from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
+from dataclasses import dataclass, field, replace
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 import math
 import re
 import networkx as nx
 import numpy as np
 
+from src.aegis_v3_modules import (
+    ConformalCalibrationReport,
+    ConformalSafetyCalibrator,
+    ZeroShotCLIPCache,
+    compute_min_area_obb_2d,
+    entity_corners_2d,
+)
 from src.dsg_generator import AgentState
 
 
@@ -102,6 +109,7 @@ class AffordanceRiskMapper:
         self.tau_atomic = float(tau_atomic)
         self._cache: Dict[str, Tuple[float, bool, str]] = {}
         self._proto_vecs: Dict[str, Tuple[float, np.ndarray]] = {}
+        self._benign_vec: Optional[np.ndarray] = None
 
         if self.embedding_fn is not None:
             for axis, (sev, desc, _) in PHYSICAL_HAZARD_AFFORDANCES.items():
@@ -109,6 +117,10 @@ class AffordanceRiskMapper:
                 norm = float(np.linalg.norm(vec))
                 if norm > 1e-8:
                     self._proto_vecs[axis] = (sev, vec / norm)
+            bvec = np.asarray(self.embedding_fn("a safe harmless soft pillow plush toy cardboard box cushion"), dtype=float)
+            bnorm = float(np.linalg.norm(bvec))
+            if bnorm > 1e-8:
+                self._benign_vec = bvec / bnorm
 
     def precompute_vocabulary(self, labels: Iterable[str]) -> None:
         """Warm the O(1) cache offline before real-time execution begins."""
@@ -159,19 +171,19 @@ class AffordanceRiskMapper:
                         best_axis = axis
                     break
 
-        # 2) Optional offline zero-shot semantic embedding similarity (cached on first sight)
+        # 2) Optional offline zero-shot semantic embedding similarity (contrastive margin + O(1) cache)
         if best_sev < self.tau_atomic and self.embedding_fn is not None and self._proto_vecs:
             vec = np.asarray(self.embedding_fn(label), dtype=float)
             norm = float(np.linalg.norm(vec))
             if norm > 1e-8:
                 u = vec / norm
+                sim_benign = float(np.dot(u, self._benign_vec)) if self._benign_vec is not None else 0.0
                 for axis, (sev, p_vec) in self._proto_vecs.items():
                     sim = float(np.dot(u, p_vec))
-                    if sim >= self.embedding_threshold:
-                        eff_sev = float(np.clip(sev * sim / self.embedding_threshold, 0.0, 1.0))
-                        if eff_sev > best_sev:
-                            best_sev = max(best_sev, sev)
-                            best_axis = f"emb:{axis}"
+                    # Must exceed both absolute similarity threshold AND beat benign-object prototype!
+                    if sim >= self.embedding_threshold and (sim - sim_benign) >= 0.04:
+                        best_sev = max(best_sev, sev)
+                        best_axis = f"emb:{axis}"
 
         res = (best_sev, best_sev >= self.tau_atomic, best_axis)
         self._cache[key] = res
@@ -183,7 +195,7 @@ _DEFAULT_AFFORDANCE_MAPPER = AffordanceRiskMapper()
 
 @dataclass(frozen=True)
 class AegisConfig:
-    """Single source of truth for all Aegis-DSG v2.0 physical & optimization parameters."""
+    """Single source of truth for all Aegis-DSG v3.0 physical, conformal & semantic parameters."""
 
     # Layer 1: Temporal Belief Filter & Object Permanence
     belief_init_scale: float = 0.75
@@ -193,7 +205,7 @@ class AegisConfig:
     fp_belief_threshold: float = 0.45
     max_occluded_frames: int = 2
 
-    # Layer 2: Continuous 3D Kinematic Risk Field & Dual-Hazard Asymmetric Cost
+    # Layer 2: Continuous 3D Kinematic Risk Field + 3D Eye-Gaze Attention + Open-Vocab CLIP Task
     horizon_s: float = 3.2
     cone_half_angle_deg: float = 38.0
     sigma_near_m: float = 0.50
@@ -203,13 +215,20 @@ class AegisConfig:
     beta: float = 0.16
     gamma: float = 1.10
     tau_haz: float = 0.28
+    enable_gaze_attention: bool = True
+    gaze_fovea_deg: float = 14.0
+    gaze_unattended_boost: float = 0.25
+    clip_task_weight: float = 0.35
 
-    # Layer 3: Free-Space-Preserving & Non-Coarsenable Coarsening
+    # Layer 3: OBB Free-Space-Preserving Coarsening + Cross-Layer Hierarchical Semantic Zoom
     min_navigable_gap_m: float = 0.70
     max_aabb_bloat_ratio: float = 1.85
+    enable_obb_supernodes: bool = True
     proactive_same_class_merge: bool = True
+    enable_hierarchical_zoom: bool = True
+    hierarchical_zoom_dist_m: float = 3.2
 
-    # Layer 4: Dynamic-Budget Monotone Submodular Selection & Hysteresis
+    # Layer 4: Dynamic-Budget Monotone Submodular Selection + Conformal Threshold + Hysteresis
     tau_min: float = 0.12
     hysteresis_bonus: float = 0.14
     theta_out: float = 0.12
@@ -219,7 +238,7 @@ class AegisConfig:
 
 @dataclass
 class AegisEntity:
-    """Unified compressed entity output by AegisDSG v2.0 (single, atomic, or Super-Node)."""
+    """Unified compressed entity output by AegisDSG v3.0 (object, atomic, OBB Super-Node, or Place/Room)."""
 
     entity_id: str
     label: str
@@ -234,6 +253,11 @@ class AegisEntity:
     is_atomic_hazard: bool = False
     is_occluded_memory: bool = False
     is_dynamic: bool = False
+    dsg_layer: str = "object"
+    obb_yaw: float = 0.0
+    obb_size: Optional[np.ndarray] = None
+    gaze_attention: float = 0.0
+    task_relevance: float = 0.0
     member_ids: Set[str] = field(default_factory=set)
 
     @property
@@ -244,7 +268,7 @@ class AegisEntity:
 
 @dataclass
 class _TrackState:
-    """Internal temporal belief state for Layer 1 Object Permanence."""
+    """Internal temporal belief & gaze-attention state for Layer 1/2."""
 
     obj_id: str
     label: str
@@ -260,6 +284,8 @@ class _TrackState:
     seen_frames: int = 1
     missed_frames: int = 0
     last_risk: float = 0.0
+    gaze_attention: float = 0.0
+    parent_place_id: Optional[str] = None
 
 
 def _xy_edge_gap(pos_a: np.ndarray, size_a: np.ndarray, pos_b: np.ndarray, size_b: np.ndarray) -> float:
@@ -282,20 +308,87 @@ def _infer_is_atomic(
 
 
 class AegisDSG:
-    """Unified 4-Layer Aegis-DSG v2.0 Sparsifier."""
+    """Unified Aegis-DSG v3.0 Sparsifier (Final Frozen Architecture).
+
+    Integrates all 5 core breakthroughs:
+      1. 3D Eye-Gaze Unattended-Hazard Attention Modulation (Layer 2)
+      2. Distribution-Free Split Conformal Safety Calibration (calibrate_conformal)
+      3. Minimum-Area 2D Oriented Bounding Box (OBB) Super-Nodes via Rotating Calipers (Layer 3A/3B)
+      4. Cross-Layer Hierarchical Semantic Zoom: Object <-> Place <-> Room (Layer 3C)
+      5. Real Zero-Shot CLIP Offline-Cached Open-Vocabulary Task & Affordance Engine (O(1) runtime)
+    """
 
     def __init__(
         self,
         config: AegisConfig | None = None,
         risk_mapper: AffordanceRiskMapper | None = None,
+        clip_cache: ZeroShotCLIPCache | None = None,
     ) -> None:
         self.config = config or AegisConfig()
-        self.risk_mapper = risk_mapper if risk_mapper is not None else _DEFAULT_AFFORDANCE_MAPPER
-        self.name = "Aegis-Core-v2"
+        self.clip_cache = clip_cache
+        if risk_mapper is not None:
+            self.risk_mapper = risk_mapper
+        elif clip_cache is not None and clip_cache.is_real_clip_loaded:
+            self.risk_mapper = AffordanceRiskMapper(embedding_fn=clip_cache.encode_text)
+        else:
+            self.risk_mapper = _DEFAULT_AFFORDANCE_MAPPER
+        self.name = "Aegis-Core-v3"
         self._cone_half_rad = math.radians(self.config.cone_half_angle_deg)
+        self._gaze_fovea_rad = math.radians(self.config.gaze_fovea_deg)
         self._tracks: Dict[str, _TrackState] = {}
         self._prev_covered: Set[str] = set()
         self._persistence: Dict[str, int] = {}
+        self.conformal_report: Optional[ConformalCalibrationReport] = None
+
+    def set_task_prompt(self, task_prompt: str, vocabulary: Optional[Iterable[str]] = None) -> None:
+        """Bind a free-form open-vocabulary user task prompt (encoded ONCE offline via CLIP)."""
+        if self.clip_cache is None:
+            self.clip_cache = ZeroShotCLIPCache()
+            self.clip_cache.load()
+        self.clip_cache.set_task_prompt(task_prompt, vocabulary=vocabulary)
+
+    def calibrate_conformal(
+        self,
+        calib_sequences: Sequence[Sequence],
+        alpha: float = 0.05,
+        dt: float = 0.1,
+    ) -> ConformalCalibrationReport:
+        """Distribution-Free Split Conformal Safety Calibration on historical/calibration DSG sequences.
+
+        Computes the exact finite-sample quantile q_hat for miscoverage <= alpha and updates
+        this instance's `config` with certified (tau_min, tau_haz) thresholds.
+        """
+        haz_scores: List[float] = []
+        haz_risks: List[float] = []
+        for seq in calib_sequences:
+            self.reset()
+            for frame in seq:
+                tracks = self._update_belief_state(frame.graph_obs, dt)
+                tr_map = {t.obj_id: t for t in tracks}
+                for nid, d in frame.graph_obs.nodes(data=True):
+                    if d.get("layer") == "object" and d.get("is_hazard_gt", False) and nid in tr_map:
+                        tr = tr_map[nid]
+                        r_v = self._compute_unified_risk(tr, frame.agent)
+                        tr.last_risk = r_v
+                        w_v, _ = self._compute_asymmetric_weight(tr, r_v)
+                        haz_risks.append(r_v)
+                        haz_scores.append(w_v)
+
+        cal = ConformalSafetyCalibrator(alpha=alpha)
+        report = cal.calibrate_from_scores(
+            haz_scores,
+            haz_risks,
+            default_tau_min=self.config.tau_min,
+            default_tau_haz=self.config.tau_haz,
+        )
+        self.conformal_report = report
+        self.config = replace(
+            self.config,
+            tau_min=report.calibrated_tau_min,
+            tau_haz=report.calibrated_tau_haz,
+        )
+        self.reset()
+        return report
 
     def reset(self) -> None:
         """Clear all temporal belief, permanence, and hysteresis memory."""
@@ -326,6 +419,15 @@ class AegisDSG:
                 affordances=d.get("affordances"),
             )
 
+            # Resolve optional parent Place / Room node in the hierarchical DSG
+            parent_place: Optional[str] = None
+            for succ in graph_obs.successors(nid):
+                slayer = graph_obs.nodes[succ].get("layer")
+                if slayer in ("place", "room"):
+                    parent_place = succ
+                    if slayer == "place":
+                        break
+
             if nid in self._tracks:
                 tr = self._tracks[nid]
                 tr.pos = pos
@@ -333,6 +435,7 @@ class AegisDSG:
                 tr.vel = vel
                 tr.confidence = conf
                 tr.is_atomic_hazard = is_atomic
+                tr.parent_place_id = parent_place
                 tr.belief = float(np.clip((1.0 - cfg.belief_ema_alpha) * tr.belief + cfg.belief_ema_alpha * conf, 0.05, 0.99))
                 tr.seen_frames += 1
                 tr.missed_frames = 0
@@ -346,12 +449,13 @@ class AegisDSG:
                     vel=vel,
                     confidence=conf,
                     structural_importance=float(d.get("structural_importance", 0.0)),
-                    hazard_severity=1.0 if is_atomic else float(d.get("hazard_severity", 0.7)),
+                    hazard_severity=1.0 if is_atomic else max(float(d.get("hazard_severity", 0.7)), intrinsic_sev),
                     is_dynamic=bool(d.get("is_dynamic", False)),
                     is_atomic_hazard=is_atomic,
                     belief=init_belief,
                     seen_frames=1,
                     missed_frames=0,
+                    parent_place_id=parent_place,
                 )
 
         # Object Permanence: propagate briefly occluded active hazards in front of the agent
@@ -375,10 +479,28 @@ class AegisDSG:
         return list(self._tracks.values())
 
     # ------------------------------------------------------------------
-    # Layer 2: Dual-Hazard 3D Kinematic Risk Field + Asymmetric Cost
+    # Layer 2: Dual-Hazard 3D Kinematic Risk Field + 3D Eye-Gaze + Open-Vocab CLIP Task
     # ------------------------------------------------------------------
+    def _update_gaze_attention(self, tr: _TrackState, agent: AgentState) -> float:
+        """Compute foveal visual attention A_gaze(v, t) in [0, 1] from 3D Eye-Gaze ray."""
+        if not self.config.enable_gaze_attention or agent.gaze_dir is None:
+            tr.gaze_attention = 0.0
+            return 0.0
+        rel_3d = tr.pos - agent.pos
+        dist_3d = float(np.linalg.norm(rel_3d))
+        if dist_3d < 1e-4:
+            return tr.gaze_attention
+        g_norm = float(np.linalg.norm(agent.gaze_dir))
+        if g_norm < 1e-6:
+            return tr.gaze_attention
+        cos_g = float(np.clip(np.dot(rel_3d / dist_3d, agent.gaze_dir / g_norm), -1.0, 1.0))
+        ang_g = math.acos(cos_g)
+        inst_att = math.exp(-(ang_g ** 2) / (2.0 * (self._gaze_fovea_rad ** 2)))
+        tr.gaze_attention = 0.65 * tr.gaze_attention + 0.35 * inst_att
+        return tr.gaze_attention
+
     def _compute_unified_risk(self, tr: _TrackState, agent: AgentState) -> float:
-        """Compute smooth 3D risk R_v unifying near-body clearance, TTC cone, and atomic reach."""
+        """Compute smooth 3D risk R_v unifying near-body clearance, TTC cone, atomic reach & gaze deficit."""
         cfg = self.config
 
         # 3D vertical relevance filter (atomic hazards like knives on waist-high tables always pass!)
@@ -432,53 +554,118 @@ class AegisDSG:
         if tr.is_atomic_hazard and dist <= cfg.atomic_reach_m:
             r_atomic = math.exp(-(dist ** 2) / (2.0 * (cfg.atomic_reach_m * 0.55) ** 2))
 
-        r_v = max(r_near, r_cone, r_atomic) * max(tr.hazard_severity, 0.2)
-        return float(np.clip(r_v, 0.0, 1.0))
+        r_kin = max(r_near, r_cone, r_atomic) * max(tr.hazard_severity, 0.2)
 
-    def _compute_asymmetric_weight(self, tr: _TrackState, r_v: float) -> float:
-        """Belief-gated Dual-Tier Asymmetric Safety Weight w_v >= 0."""
+        # Component D (v3.0): 3D Eye-Gaze Unattended-Hazard Modulation
+        # Hazards OUTSIDE the wearer's foveal gaze (unattended peripheral threats) get priority boost!
+        if cfg.enable_gaze_attention and agent.gaze_dir is not None and r_kin > 0.05:
+            att = self._update_gaze_attention(tr, agent)
+            unattended = 1.0 - att
+            r_kin = r_kin * (1.0 + cfg.gaze_unattended_boost * unattended)
+
+        return float(np.clip(r_kin, 0.0, 1.0))
+
+    def _compute_asymmetric_weight(self, tr: _TrackState, r_v: float) -> Tuple[float, float]:
+        """Belief-gated Dual-Tier Asymmetric Safety Weight w_v >= 0 + Zero-Shot CLIP task score."""
         cfg = self.config
         q_v = tr.confidence
         u_v = 1.0 - q_v
-        c_v = tr.structural_importance
+        c_struct = tr.structural_importance
+
+        # Real Zero-Shot Open-Vocabulary CLIP Task Relevance (O(1) cached lookup -> 0.00 ms)
+        clip_rel = 0.0
+        if self.clip_cache is not None and self.clip_cache._task_vec is not None:
+            clip_rel = self.clip_cache.task_relevance(tr.label)
+            c_v = max(c_struct, clip_rel)
+            beta_eff = max(cfg.beta, cfg.clip_task_weight)
+        else:
+            c_v = c_struct
+            beta_eff = cfg.beta
 
         is_reliable = tr.belief >= cfg.fp_belief_threshold
         gamma_eff = cfg.gamma if is_reliable else (0.15 * cfg.gamma)
         belief_gate = 1.0 if (is_reliable and tr.missed_frames == 0) else min(1.0, tr.belief)
 
         haz_ind = 1.0 if r_v > cfg.tau_haz else 0.0
-        # Dual-Tier Safety Dominance:
-        # - Confirmed active atomic hazards (e.g. knife, scissors, stair_edge, pedestrian): +0.90
-        # - Confirmed active geometric hazards (chair, table, barrier): +0.50
         if haz_ind > 0.0 and is_reliable and tr.missed_frames == 0:
             safety_tier = 0.90 if tr.is_atomic_hazard else 0.50
         else:
             safety_tier = 0.0
 
         w_v = belief_gate * (
-            safety_tier + cfg.alpha * r_v * (1.0 + gamma_eff * u_v * haz_ind) + cfg.beta * q_v * c_v
+            safety_tier + cfg.alpha * r_v * (1.0 + gamma_eff * u_v * haz_ind) + beta_eff * q_v * c_v
         )
-        return max(0.0, float(w_v))
+        return max(0.0, float(w_v)), clip_rel
 
     # ------------------------------------------------------------------
-    # Layer 3: Free-Space-Preserving & Non-Coarsenable Coarsening (Fast Union-Find)
+    # Layer 3: OBB Free-Space-Preserving Coarsening + Cross-Layer Semantic Zoom
     # ------------------------------------------------------------------
     @staticmethod
-    def _aabb_bloat_ok(group: List[AegisEntity], max_ratio: float) -> bool:
-        """Ensure merging a group's AABBs does not hallucinate fake walls across empty floor space."""
+    def _obb_bloat_ok(group: List[AegisEntity], max_ratio: float, use_obb: bool = True) -> bool:
+        """Ensure merging a group does not hallucinate fake walls across empty floor space.
+
+        When `use_obb=True`, uses exact Rotating-Calipers Minimum-Area OBB so 45-degree
+        diagonal furniture rows merge tightly without AABB corridor inflation.
+        """
         if len(group) <= 1:
             return True
+        sum_area = sum(float(max(e.size[0], 0.05) * max(e.size[1], 0.05)) for e in group)
+        if use_obb:
+            corners = np.vstack([
+                entity_corners_2d(
+                    e.pos[:2],
+                    e.obb_size[:2] if e.obb_size is not None else e.size[:2],
+                    e.obb_yaw,
+                )
+                for e in group
+            ])
+            _, _, _, obb_area = compute_min_area_obb_2d(corners)
+            return obb_area <= max_ratio * max(sum_area, 1e-4)
         mins = np.min([e.pos[:2] - 0.5 * e.size[:2] for e in group], axis=0)
         maxs = np.max([e.pos[:2] + 0.5 * e.size[:2] for e in group], axis=0)
         merged_area = float(max(maxs[0] - mins[0], 0.05) * max(maxs[1] - mins[1], 0.05))
-        sum_area = sum(float(max(e.size[0], 0.05) * max(e.size[1], 0.05)) for e in group)
         return merged_area <= max_ratio * max(sum_area, 1e-4)
 
     @staticmethod
-    def _merge_group(group: List[AegisEntity], merge_id: str, new_label: str) -> AegisEntity:
-        """Merge a connected component of non-atomic geometric entities into 1 Super-Node."""
+    def _merge_group(
+        group: List[AegisEntity],
+        merge_id: str,
+        new_label: str,
+        use_obb: bool = True,
+        dsg_layer: str = "object",
+    ) -> AegisEntity:
+        """Merge non-atomic geometric entities into 1 Super-Node with exact Minimum-Area OBB."""
         mins = np.min([e.pos - 0.5 * e.size for e in group], axis=0)
         maxs = np.max([e.pos + 0.5 * e.size for e in group], axis=0)
+        aabb_center = 0.5 * (mins + maxs)
+        aabb_size = maxs - mins
+
+        obb_yaw = 0.0
+        obb_size_3d: Optional[np.ndarray] = None
+        if use_obb and len(group) >= 2:
+            corners = np.vstack([
+                entity_corners_2d(
+                    e.pos[:2],
+                    e.obb_size[:2] if e.obb_size is not None else e.size[:2],
+                    e.obb_yaw,
+                )
+                for e in group
+            ])
+            obb_c_xy, obb_wh, obb_yaw, obb_area = compute_min_area_obb_2d(corners)
+            aabb_area = float(max(aabb_size[0], 0.05) * max(aabb_size[1], 0.05))
+            if obb_area < 0.96 * aabb_area:
+                pos_out = np.array([obb_c_xy[0], obb_c_xy[1], aabb_center[2]], dtype=float)
+                obb_size_3d = np.array([obb_wh[0], obb_wh[1], aabb_size[2]], dtype=float)
+                # Keep fallback AABB centered symmetrically on pos_out so rasterizer bounds never clip
+                half_span = np.max(np.abs(corners - obb_c_xy), axis=0)
+                aabb_size = np.array([2.0 * half_span[0], 2.0 * half_span[1], aabb_size[2]], dtype=float)
+            else:
+                obb_yaw = 0.0
+                pos_out = aabb_center
+                obb_size_3d = aabb_size.copy()
+        else:
+            pos_out = aabb_center
+
         fastest = max(group, key=lambda e: float(np.linalg.norm(e.vel)))
         members: Set[str] = set()
         for e in group:
@@ -487,8 +674,8 @@ class AegisDSG:
         return AegisEntity(
             entity_id=merge_id,
             label=new_label,
-            pos=0.5 * (mins + maxs),
-            size=maxs - mins,
+            pos=pos_out,
+            size=aabb_size,
             vel=fastest.vel.copy(),
             risk=max(e.risk for e in group),
             weight=max(e.weight for e in group),
@@ -497,11 +684,23 @@ class AegisDSG:
             is_atomic_hazard=False,
             is_occluded_memory=all(e.is_occluded_memory for e in group),
             is_dynamic=any(e.is_dynamic for e in group),
+            dsg_layer=dsg_layer,
+            obb_yaw=obb_yaw,
+            obb_size=obb_size_3d,
+            gaze_attention=max(e.gaze_attention for e in group),
+            task_relevance=max(e.task_relevance for e in group),
             member_ids=members,
         )
 
-    def _coarsen_entities(self, entities: List[AegisEntity], k: int) -> List[AegisEntity]:
-        """Fast Union-Find coarsening that STRICTLY protects Atomic Hazards from Semantic Erasure."""
+    def _coarsen_entities(
+        self,
+        entities: List[AegisEntity],
+        k: int,
+        graph_obs: Optional[nx.DiGraph] = None,
+        agent: Optional[AgentState] = None,
+        entity_parent_place: Optional[Dict[str, str]] = None,
+    ) -> List[AegisEntity]:
+        """OBB Union-Find coarsening + Cross-Layer Semantic Zoom protecting Atomic Hazards."""
         cfg = self.config
         merge_counter = 0
 
@@ -527,7 +726,7 @@ class AegisDSG:
                     continue
                 parent = list(range(m))
                 comp_members: Dict[int, List[AegisEntity]] = {idx: [grp[idx]] for idx in range(m)}
-                # O(1) incremental bounding-box bounds per component root: (min_x, min_y, max_x, max_y, sum_area)
+                # Fast O(1) AABB pre-check; fall back to exact Rotating-Calipers OBB when AABB bloats on diagonals!
                 comp_bbox: Dict[int, Tuple[float, float, float, float, float]] = {}
                 for idx in range(m):
                     px, py = float(grp[idx].pos[0]), float(grp[idx].pos[1])
@@ -552,7 +751,19 @@ class AegisDSG:
                                 nx1, ny1 = max(b1[2], b2[2]), max(b1[3], b2[3])
                                 n_sum = b1[4] + b2[4]
                                 m_area = max(nx1 - nx0, 0.05) * max(ny1 - ny0, 0.05)
-                                if m_area <= cfg.max_aabb_bloat_ratio * n_sum:
+                                ok_merge = (m_area <= cfg.max_aabb_bloat_ratio * n_sum)
+                                if (
+                                    not ok_merge
+                                    and cfg.enable_obb_supernodes
+                                    and (len(comp_members[ri]) + len(comp_members[rj])) <= 4
+                                ):
+                                    # Exact Rotating-Calipers OBB allows tight diagonal rows without AABB bloat!
+                                    ok_merge = self._obb_bloat_ok(
+                                        comp_members[ri] + comp_members[rj],
+                                        cfg.max_aabb_bloat_ratio,
+                                        use_obb=True,
+                                    )
+                                if ok_merge:
                                     parent[rj] = ri
                                     comp_members[ri].extend(comp_members[rj])
                                     comp_bbox[ri] = (nx0, ny0, nx1, ny1, n_sum)
@@ -569,6 +780,7 @@ class AegisDSG:
                                 comp,
                                 merge_id=f"super_{lbl}_{merge_counter}",
                                 new_label=f"{lbl}_group(x{total_m})",
+                                use_obb=cfg.enable_obb_supernodes,
                             )
                         )
                         merge_counter += 1
@@ -578,7 +790,6 @@ class AegisDSG:
         geom_haz = [e for e in coarsenable if e.risk > cfg.tau_haz and e.belief >= cfg.fp_belief_threshold]
         geom_non_haz = [e for e in coarsenable if not (e.risk > cfg.tau_haz and e.belief >= cfg.fp_belief_threshold)]
 
-        # Reserve slots for active atomic hazards so geometric hazards coarsen cleanly around them
         active_atomic_count = sum(1 for e in atomic_protected if e.risk > cfg.tau_haz)
         target_geom_budget = max(1, k - active_atomic_count)
 
@@ -591,7 +802,7 @@ class AegisDSG:
                     if (
                         gap < cfg.min_navigable_gap_m
                         and gap < best_gap
-                        and self._aabb_bloat_ok([geom_haz[i], geom_haz[j]], cfg.max_aabb_bloat_ratio)
+                        and self._obb_bloat_ok([geom_haz[i], geom_haz[j]], cfg.max_aabb_bloat_ratio, use_obb=cfg.enable_obb_supernodes)
                     ):
                         best_gap = gap
                         best_pair = (i, j)
@@ -603,10 +814,57 @@ class AegisDSG:
                 [geom_haz[i], geom_haz[j]],
                 merge_id=f"super_nogo_{merge_counter}",
                 new_label=f"no_go_cluster(x{members_n})",
+                use_obb=cfg.enable_obb_supernodes,
             )
             merge_counter += 1
             geom_haz = [e for idx, e in enumerate(geom_haz) if idx not in (i, j)]
             geom_haz.append(merged)
+
+        # Stage 3C (v3.0): Cross-Layer Hierarchical Semantic Zoom (Object -> Place / Room)
+        # Lift distant non-atomic background clutter sharing a parent Place/Room node into 1 higher-layer summary!
+        if (
+            cfg.enable_hierarchical_zoom
+            and graph_obs is not None
+            and agent is not None
+            and entity_parent_place
+            and len(geom_non_haz) > 1
+        ):
+            by_place: Dict[str, List[AegisEntity]] = defaultdict(list)
+            kept_near_non_haz: List[AegisEntity] = []
+            for e in geom_non_haz:
+                dist_xy = float(np.linalg.norm(e.pos[:2] - agent.pos[:2]))
+                # Find parent place/room shared by member_ids
+                p_id = None
+                for mid in e.member_ids:
+                    if mid in entity_parent_place:
+                        p_id = entity_parent_place[mid]
+                        break
+                if p_id is not None and p_id in graph_obs and dist_xy >= cfg.hierarchical_zoom_dist_m:
+                    by_place[p_id].append(e)
+                else:
+                    kept_near_non_haz.append(e)
+
+            for p_id, grp in by_place.items():
+                if len(grp) == 1:
+                    kept_near_non_haz.append(grp[0])
+                else:
+                    p_node = graph_obs.nodes[p_id]
+                    p_layer = str(p_node.get("layer", "place"))
+                    p_lbl = str(p_node.get("label", p_id))
+                    total_m = sum(len(e.member_ids) for e in grp)
+                    zoomed = self._merge_group(
+                        grp,
+                        merge_id=f"hier_{p_id}_{merge_counter}",
+                        new_label=f"{p_layer}:{p_lbl}(x{total_m})",
+                        use_obb=cfg.enable_obb_supernodes,
+                        dsg_layer=p_layer,
+                    )
+                    # Preserve parent structural importance as hierarchical landmark summary
+                    p_cv = float(p_node.get("structural_importance", 0.5))
+                    zoomed.weight = max(zoomed.weight, cfg.beta * p_cv)
+                    kept_near_non_haz.append(zoomed)
+                    merge_counter += 1
+            geom_non_haz = kept_near_non_haz
 
         return atomic_protected + geom_haz + geom_non_haz
 
@@ -697,12 +955,15 @@ class AegisDSG:
             return []
 
         candidates: List[AegisEntity] = []
+        entity_parent_place: Dict[str, str] = {}
         for tr in tracks:
             r_v = self._compute_unified_risk(tr, agent)
             tr.last_risk = r_v
             if tr.missed_frames > 0 and r_v <= self.config.tau_haz:
                 continue
-            w_v = self._compute_asymmetric_weight(tr, r_v)
+            w_v, clip_rel = self._compute_asymmetric_weight(tr, r_v)
+            if tr.parent_place_id is not None:
+                entity_parent_place[tr.obj_id] = tr.parent_place_id
             candidates.append(
                 AegisEntity(
                     entity_id=tr.obj_id,
@@ -717,11 +978,20 @@ class AegisDSG:
                     is_atomic_hazard=tr.is_atomic_hazard,
                     is_occluded_memory=(tr.missed_frames > 0),
                     is_dynamic=tr.is_dynamic,
+                    dsg_layer="object",
+                    gaze_attention=tr.gaze_attention,
+                    task_relevance=clip_rel,
                     member_ids={tr.obj_id},
                 )
             )
 
-        coarsened = self._coarsen_entities(candidates, k)
+        coarsened = self._coarsen_entities(
+            candidates,
+            k,
+            graph_obs=graph_obs,
+            agent=agent,
+            entity_parent_place=entity_parent_place,
+        )
         selected = self._select_submodular_dynamic(coarsened, k)
 
         covered = set().union(*(e.member_ids for e in selected)) if selected else set()

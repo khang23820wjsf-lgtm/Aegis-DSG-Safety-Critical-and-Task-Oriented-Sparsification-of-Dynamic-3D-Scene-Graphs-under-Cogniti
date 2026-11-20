@@ -12,7 +12,7 @@ Produces both ground-truth (G_t^gt) and noisy egocentric observations (G_t^obs).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Tuple
+from typing import Dict, List, Literal, Optional, Tuple
 import math
 import networkx as nx
 import numpy as np
@@ -54,6 +54,7 @@ class AgentState:
     height: float = 1.70
     fov_half_angle_rad: float = math.radians(70.0)
     max_range: float = 12.0
+    gaze_dir: Optional[np.ndarray] = None  # optional unit 3D world eye-gaze ray (x, y, z)
 
 
 @dataclass

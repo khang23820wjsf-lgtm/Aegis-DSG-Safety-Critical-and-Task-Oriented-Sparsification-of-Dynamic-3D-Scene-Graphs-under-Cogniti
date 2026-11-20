@@ -7,6 +7,12 @@ import networkx as nx
 import numpy as np
 
 from src.aegis_core import AegisConfig, AegisDSG, AffordanceRiskMapper
+from src.aegis_v3_modules import (
+    ConformalSafetyCalibrator,
+    ZeroShotCLIPCache,
+    compute_min_area_obb_2d,
+    entity_corners_2d,
+)
 from src.dsg_generator import AgentState
 
 
@@ -151,8 +157,8 @@ class TestAegisCore(unittest.TestCase):
             return np.array([0.0, 0.0, 1.0])
 
         mapper = AffordanceRiskMapper(embedding_fn=mock_clip_encoder, embedding_threshold=0.75)
-        init_calls = calls["n"]  # 6 prototype axes encoded once at startup
-        self.assertEqual(init_calls, 6)
+        init_calls = calls["n"]  # 6 prototype axes + 1 benign contrastive baseline encoded once at startup
+        self.assertEqual(init_calls, 7)
 
         sev1, atom1, axis1 = mapper.assess("exotic_machete_tool")
         self.assertTrue(atom1)
@@ -165,6 +171,93 @@ class TestAegisCore(unittest.TestCase):
             _, atom_rep, _ = mapper.assess("exotic_machete_tool")
             self.assertTrue(atom_rep)
         self.assertEqual(calls["n"], after_first)
+
+    def test_v3_eye_gaze_unattended_hazard_priority(self) -> None:
+        """Breakthrough 1: Unattended peripheral hazards outrank fixated hazards at identical kinematics."""
+        aegis = AegisDSG(AegisConfig(enable_gaze_attention=True, gaze_unattended_boost=0.30))
+        # Agent walks straight +Y, but eyes are fixated directly on the LEFT obstacle (-0.8, 1.8)
+        gaze_left = np.array([-0.8, 1.8, -0.35], dtype=float)
+        gaze_left /= np.linalg.norm(gaze_left)
+        agent_gaze = AgentState(pos=np.array([2.0, 0.0, 0.85]), vel=np.array([0.0, 1.0, 0.0]), gaze_dir=gaze_left)
+        g = _make_graph([
+            {"id": "obs_left_seen", "label": "chair", "pos": [1.2, 1.8, 0.5], "haz": 0.75},
+            {"id": "obs_right_unseen", "label": "table", "pos": [2.8, 1.8, 0.5], "haz": 0.75},
+        ])
+        out = aegis.compress(g, agent_gaze, k=1)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].entity_id, "obs_right_unseen")
+        self.assertLess(out[0].gaze_attention, 0.1)
+
+    def test_v3_split_conformal_safety_calibration(self) -> None:
+        """Breakthrough 2: Finite-sample Split Conformal quantile satisfies P(score >= tau) >= 1 - alpha."""
+        rng = np.random.default_rng(7)
+        calib_scores = rng.uniform(0.05, 1.0, size=200)
+        calib_risks = rng.uniform(0.10, 1.0, size=200)
+        cal = ConformalSafetyCalibrator(alpha=0.05)
+        rep = cal.calibrate_from_scores(calib_scores, calib_risks, default_tau_min=0.25, default_tau_haz=0.35)
+        self.assertGreaterEqual(rep.calib_empirical_coverage, 0.95)
+        self.assertLessEqual(rep.calibrated_tau_min, 0.25)
+
+    def test_v3_obb_rotating_calipers_diagonal_row(self) -> None:
+        """Breakthrough 3: Rotating-Calipers OBB merges a 45-deg diagonal furniture row without AABB bloat."""
+        pts = np.vstack([
+            entity_corners_2d(np.array([1.0, 1.0]), np.array([0.4, 0.4])),
+            entity_corners_2d(np.array([1.5, 1.5]), np.array([0.4, 0.4])),
+            entity_corners_2d(np.array([2.0, 2.0]), np.array([0.4, 0.4])),
+        ])
+        aabb_area = (pts[:, 0].max() - pts[:, 0].min()) * (pts[:, 1].max() - pts[:, 1].min())
+        _, obb_wh, obb_yaw, obb_area = compute_min_area_obb_2d(pts)
+        # OBB area on a 45-degree diagonal strip must be strictly much tighter than AABB!
+        self.assertLess(obb_area, 0.65 * aabb_area)
+        self.assertGreater(abs(obb_yaw), 0.3)
+
+        # Verify Layer 3 merges the 3 diagonal chairs into ONE rotated OBB Super-Node
+        aegis = AegisDSG(AegisConfig(enable_obb_supernodes=True, min_navigable_gap_m=0.70, max_aabb_bloat_ratio=2.2))
+        g = _make_graph([
+            {"id": "d1", "label": "chair", "pos": [1.0, 1.5, 0.4], "size": [0.45, 0.45, 0.8]},
+            {"id": "d2", "label": "chair", "pos": [1.5, 2.0, 0.4], "size": [0.45, 0.45, 0.8]},
+            {"id": "d3", "label": "chair", "pos": [2.0, 2.5, 0.4], "size": [0.45, 0.45, 0.8]},
+        ])
+        out = aegis.compress(g, self.agent, k=5)
+        self.assertEqual(len(out), 1)
+        self.assertTrue(out[0].is_super_node)
+        self.assertIsNotNone(out[0].obb_size)
+        self.assertEqual(out[0].member_ids, {"d1", "d2", "d3"})
+
+    def test_v3_cross_layer_hierarchical_semantic_zoom(self) -> None:
+        """Breakthrough 4: Keeps near atomic knife at Object layer while zooming distant clutter to Place layer."""
+        aegis = AegisDSG(AegisConfig(enable_hierarchical_zoom=True, hierarchical_zoom_dist_m=3.0, tau_min=0.05))
+        g = _make_graph([
+            {"id": "k1", "label": "knife", "pos": [2.0, 0.7, 0.9], "size": [0.05, 0.25, 0.03], "haz": 1.0},
+            {"id": "far1", "label": "vase", "pos": [2.0, 5.0, 0.8], "size": [0.2, 0.2, 0.3], "haz": 0.0, "cv": 0.4},
+            {"id": "far2", "label": "lamp", "pos": [2.6, 5.4, 0.8], "size": [0.3, 0.3, 0.5], "haz": 0.0, "cv": 0.4},
+            {"id": "far3", "label": "book", "pos": [1.4, 5.2, 0.8], "size": [0.2, 0.2, 0.2], "haz": 0.0, "cv": 0.4},
+        ])
+        g.add_node("place_far", layer="place", label="dining_corner", pos=np.array([2.0, 5.2, 1.0]), size=np.array([2.5, 2.5, 2.4]), structural_importance=0.85)
+        for nid in ("far1", "far2", "far3"):
+            g.add_edge(nid, "place_far", relation="in_place")
+
+        out = aegis.compress(g, self.agent, k=3)
+        by_id = {e.entity_id: e for e in out}
+        self.assertIn("k1", by_id)
+        self.assertEqual(by_id["k1"].dsg_layer, "object")
+        place_nodes = [e for e in out if e.dsg_layer == "place"]
+        self.assertEqual(len(place_nodes), 1)
+        self.assertEqual(place_nodes[0].member_ids, {"far1", "far2", "far3"})
+
+    def test_v3_zero_shot_clip_cache_task_routing(self) -> None:
+        """Breakthrough 5: Offline-cached open-vocab task engine boosts task-relevant items at O(1) lookup."""
+        clip_cache = ZeroShotCLIPCache()  # uses lightweight fallback without downloading weights during unit test
+        clip_cache.set_task_prompt("brew hot coffee mug", vocabulary=["coffee_mug", "wall_painting"])
+        aegis = AegisDSG(AegisConfig(tau_min=0.05, clip_task_weight=0.50), clip_cache=clip_cache)
+        g = _make_graph([
+            {"id": "mug1", "label": "coffee_mug", "pos": [2.0, 4.0, 0.9], "haz": 0.0, "cv": 0.1},
+            {"id": "art1", "label": "wall_painting", "pos": [2.0, 4.0, 0.9], "haz": 0.0, "cv": 0.1},
+        ])
+        out = aegis.compress(g, self.agent, k=1)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].entity_id, "mug1")
+        self.assertGreater(out[0].task_relevance, 0.0)
 
 
 if __name__ == "__main__":

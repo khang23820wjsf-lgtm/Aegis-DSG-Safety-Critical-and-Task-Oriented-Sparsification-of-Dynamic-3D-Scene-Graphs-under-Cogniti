@@ -18,6 +18,7 @@ import mujoco.viewer
 import networkx as nx
 import numpy as np
 
+from src.aegis_v3_modules import point_to_obb_clearance_2d
 from src.dsg_generator import AgentState, NOISE_CONFIGS, NoiseLevel
 from src.phase_b.coarsening import CompressedEntity
 
@@ -174,7 +175,18 @@ def _update_local_costmap(
         x1 = min(w_cells - 1, int((e.pos[0] + e.size[0] / 2.0 + inflate) / res) + 1)
         y0 = max(1, int((e.pos[1] - e.size[1] / 2.0 - inflate) / res))
         y1 = min(h_cells - 1, int((e.pos[1] + e.size[1] / 2.0 + inflate) / res) + 1)
-        occ[x0:x1, y0:y1] = np.minimum(1.0, occ[x0:x1, y0:y1] + 0.55)
+        obb_size = getattr(e, "obb_size", None)
+        obb_yaw = float(getattr(e, "obb_yaw", 0.0))
+        if obb_size is not None and abs(obb_yaw) > 1e-3:
+            # Exact rotated OBB rasterization — preserves diagonal corridors!
+            for ix in range(x0, x1):
+                cx = (ix + 0.5) * res
+                for iy in range(y0, y1):
+                    cy = (iy + 0.5) * res
+                    if point_to_obb_clearance_2d(np.array([cx, cy]), e.pos[:2], obb_size[:2], obb_yaw, margin=inflate) <= 0.0:
+                        occ[ix, iy] = min(1.0, occ[ix, iy] + 0.55)
+        else:
+            occ[x0:x1, y0:y1] = np.minimum(1.0, occ[x0:x1, y0:y1] + 0.55)
 
 
 def _astar_subgoal(
@@ -286,9 +298,16 @@ def _plan_dwa_velocity(
                 min_clr = min(min_clr, w_clr)
                 for e in active:
                     ox, oy = e.pos[0] + e.vel[0] * dt, e.pos[1] + e.vel[1] * dt
-                    dx = max(abs(px - ox) - (e.size[0] / 2.0 + margin), 0.0)
-                    dy = max(abs(py - oy) - (e.size[1] / 2.0 + margin), 0.0)
-                    clr = math.hypot(dx, dy)
+                    obb_s = getattr(e, "obb_size", None)
+                    obb_y = float(getattr(e, "obb_yaw", 0.0))
+                    if obb_s is not None and abs(obb_y) > 1e-3:
+                        clr = point_to_obb_clearance_2d(
+                            np.array([px, py]), np.array([ox, oy]), obb_s[:2], obb_y, margin=margin
+                        )
+                    else:
+                        dx = max(abs(px - ox) - (e.size[0] / 2.0 + margin), 0.0)
+                        dy = max(abs(py - oy) - (e.size[1] / 2.0 + margin), 0.0)
+                        clr = math.hypot(dx, dy)
                     if clr <= 0.02:
                         hit = True
                         break

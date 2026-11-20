@@ -17,8 +17,9 @@ from __future__ import annotations
 from collections import defaultdict
 import csv
 import json
+import math
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 import networkx as nx
 import numpy as np
 
@@ -146,9 +147,10 @@ def load_aria_adt_sequence(
                 vis,
             )
 
-    # 4. Load 6DoF wearable Aria glasses trajectory (convert us -> ns)
+    # 4. Load 6DoF wearable Aria glasses trajectory (position + quaternion R_world_device)
     traj_ts: List[int] = []
     traj_pos: List[np.ndarray] = []
+    traj_rot: List[np.ndarray] = []
     with open(seq_dir / "aria_trajectory.csv", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             ts_ns = int(row["tracking_timestamp_us"]) * 1000
@@ -156,10 +158,42 @@ def load_aria_adt_sequence(
                 [float(row["tx_world_device"]), float(row["tz_world_device"]), float(row["ty_world_device"])],
                 dtype=float,
             )
+            qx = float(row["qx_world_device"])
+            qy = float(row["qy_world_device"])
+            qz = float(row["qz_world_device"])
+            qw = float(row["qw_world_device"])
+            rot = np.array(
+                [
+                    [1.0 - 2.0 * (qy * qy + qz * qz), 2.0 * (qx * qy - qz * qw), 2.0 * (qx * qz + qy * qw)],
+                    [2.0 * (qx * qy + qz * qw), 1.0 - 2.0 * (qx * qx + qz * qz), 2.0 * (qy * qz - qx * qw)],
+                    [2.0 * (qx * qz - qy * qw), 2.0 * (qy * qz + qx * qw), 1.0 - 2.0 * (qx * qx + qy * qy)],
+                ],
+                dtype=float,
+            )
             traj_ts.append(ts_ns)
             traj_pos.append(pos)
+            traj_rot.append(rot)
+
+    # 4b. Load real 3D Eye-Gaze stream (eyegaze.csv: yaw_rads_cpf, pitch_rads_cpf) if present
+    gaze_ts: List[int] = []
+    gaze_cpf_vecs: List[np.ndarray] = []
+    gaze_path = seq_dir / "eyegaze.csv"
+    if gaze_path.exists():
+        with open(gaze_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                try:
+                    ts_ns = int(row["tracking_timestamp_us"]) * 1000
+                    yaw = float(row["yaw_rads_cpf"])
+                    pitch = float(row["pitch_rads_cpf"])
+                    v = np.array([math.tan(yaw), math.tan(pitch), 1.0], dtype=float)
+                    v /= float(np.linalg.norm(v)) + 1e-12
+                    gaze_ts.append(ts_ns)
+                    gaze_cpf_vecs.append(v)
+                except (KeyError, ValueError):
+                    continue
 
     traj_ts_arr = np.array(traj_ts, dtype=np.int64)
+    gaze_ts_arr = np.array(gaze_ts, dtype=np.int64) if gaze_ts else np.array([], dtype=np.int64)
     rgb_timestamps = sorted(boxes_by_ts.keys())
     dyn_ts_arr = np.array(sorted(dynamic_pos.keys()), dtype=np.int64) if dynamic_pos else np.array([], dtype=np.int64)
 
@@ -177,9 +211,19 @@ def load_aria_adt_sequence(
         ts = rgb_timestamps[vid_idx]
         ts_s = ts * 1e-9
 
-        # Nearest 6DoF head pose
+        # Nearest 6DoF head pose & real 3D eye-gaze ray in Aegis Z-up world frame
         ti = int(np.argmin(np.abs(traj_ts_arr - ts)))
         apos = traj_pos[ti].copy()
+        rot_wd = traj_rot[ti]
+        gaze_world_zup: Optional[np.ndarray] = None
+        if len(gaze_ts_arr) > 0:
+            gi = int(np.argmin(np.abs(gaze_ts_arr - ts)))
+            g_adt = rot_wd @ gaze_cpf_vecs[gi]  # ADT Y-up world ray
+            g_zup = np.array([g_adt[0], g_adt[2], g_adt[1]], dtype=float)
+            nrm = float(np.linalg.norm(g_zup))
+            if nrm > 1e-8:
+                gaze_world_zup = g_zup / nrm
+
         if prev_agent_pos is not None and prev_ts_s is not None and (ts_s - prev_ts_s) > 1e-4:
             avel = (apos - prev_agent_pos) / (ts_s - prev_ts_s)
         else:
@@ -188,7 +232,14 @@ def load_aria_adt_sequence(
         prev_agent_pos = apos.copy()
         prev_ts_s = ts_s
 
-        agent = AgentState(pos=apos, vel=avel, radius=0.32, height=max(1.5, float(apos[2]) + 0.15), max_range=8.0)
+        agent = AgentState(
+            pos=apos,
+            vel=avel,
+            radius=0.32,
+            height=max(1.5, float(apos[2]) + 0.15),
+            max_range=8.0,
+            gaze_dir=gaze_world_zup,
+        )
 
         # Nearest dynamic object snapshot
         dyn_map: Dict[str, np.ndarray] = {}
@@ -256,7 +307,24 @@ def load_aria_adt_sequence(
             )
             g_gt.add_node(nid, **node_attrs)
             g_obs.add_node(nid, **node_attrs)
-            g_obs.add_edge(nid, "room_aria_apt", relation="belongs_to")
+            # Attach hierarchical Place zone (2.5m x 2.5m topological zone) -> Room
+            gx, gy = int(math.floor(float(pos[0]) / 2.5)), int(math.floor(float(pos[1]) / 2.5))
+            place_id = f"place_zone_{gx}_{gy}"
+            if place_id not in g_obs:
+                p_center = np.array([(gx + 0.5) * 2.5, (gy + 0.5) * 2.5, 1.0], dtype=float)
+                g_obs.add_node(
+                    place_id,
+                    layer="place",
+                    label=f"zone_{gx}_{gy}",
+                    pos=p_center,
+                    size=np.array([2.5, 2.5, 2.4]),
+                    vel=np.zeros(3),
+                    confidence=1.0,
+                    structural_importance=0.65,
+                    hazard_severity=0.0,
+                )
+                g_obs.add_edge(place_id, "room_aria_apt", relation="belongs_to")
+            g_obs.add_edge(nid, place_id, relation="in_place")
             frame_boxes[nid] = (x1, y1, x2, y2)
 
         prev_obj_pos = curr_obj_pos
