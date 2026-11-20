@@ -1,0 +1,5 @@
+# Exclude generated interactive HTML viewers and offline study bundle from GitHub Linguist language stats
+results/*.html linguist-generated=true
+results/*.html linguist-detectable=false
+user_study/*.html linguist-generated=true
+user_study/*.html linguist-detectable=false

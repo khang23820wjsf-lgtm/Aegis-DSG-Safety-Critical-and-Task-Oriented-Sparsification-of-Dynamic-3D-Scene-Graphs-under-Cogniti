@@ -1,3 +1,12 @@
+# Core Aegis-DSG Engine (zero GPU required, runs >300 Hz on CPU)
 networkx>=3.0
 numpy>=1.24
 matplotlib>=3.7
+
+# Optional: Real-World Benchmarks & Demos (uncomment or install as needed)
+# mujoco>=3.0               # Closed-loop 3D rigid-body physics (3DSSG rooms)
+# open-clip-torch>=2.24     # Real zero-shot CLIP (ViT-B-32) offline task & affordance caching
+# opencv-python>=4.8        # Meta Project Aria RGB visualization & user study builder
+# requests>=2.31            # Meta Aria ADT compact ground-truth downloader
+# ultralytics>=8.0          # Real-photo YOLOv8 + MiDaS 3D depth demo
+# torch>=2.1                # GNN-GAT baseline & open_clip backend

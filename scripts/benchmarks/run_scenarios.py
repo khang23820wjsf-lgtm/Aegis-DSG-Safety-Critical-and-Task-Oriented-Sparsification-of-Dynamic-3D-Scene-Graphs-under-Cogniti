@@ -1,6 +1,7 @@
 """Multi-Environment Benchmark for Phase A (4 Diverse 3D Scenarios)."""
 
 from __future__ import annotations
+import sys as _sys; from pathlib import Path as _Path; _ROOT = str(_Path(__file__).resolve().parents[2]); (_sys.path.insert(0, _ROOT) if _ROOT not in _sys.path else None)
 
 import json
 from pathlib import Path

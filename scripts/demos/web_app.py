@@ -11,6 +11,7 @@ Features 3 interactive tabs:
 """
 
 from __future__ import annotations
+import sys as _sys; from pathlib import Path as _Path; _ROOT = str(_Path(__file__).resolve().parents[2]); (_sys.path.insert(0, _ROOT) if _ROOT not in _sys.path else None)
 
 import base64
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -24,7 +25,7 @@ import matplotlib
 matplotlib.use("Agg")
 import numpy as np
 
-from run_real_photo_aegis import (
+from scripts.demos.run_real_photo_aegis import (
     build_3d_scene_graph_from_photo,
     estimate_depth_map,
     visualize_real_photo_aegis,

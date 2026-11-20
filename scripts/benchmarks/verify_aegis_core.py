@@ -3,6 +3,7 @@ across 4 unseen environments (medium & heavy noise) and 10 real 3DSSG rooms in M
 """
 
 from __future__ import annotations
+import sys as _sys; from pathlib import Path as _Path; _ROOT = str(_Path(__file__).resolve().parents[2]); (_sys.path.insert(0, _ROOT) if _ROOT not in _sys.path else None)
 
 import numpy as np
 

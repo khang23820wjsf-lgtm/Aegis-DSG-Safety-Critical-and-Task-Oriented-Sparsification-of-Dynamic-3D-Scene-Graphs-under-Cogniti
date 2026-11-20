@@ -3,6 +3,7 @@ and export an interactive 360°-rotatable 3D Web Viewer (results/mujoco_3dssg_vi
 """
 
 from __future__ import annotations
+import sys as _sys; from pathlib import Path as _Path; _ROOT = str(_Path(__file__).resolve().parents[2]); (_sys.path.insert(0, _ROOT) if _ROOT not in _sys.path else None)
 
 import json
 import math
