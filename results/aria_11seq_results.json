@@ -1,0 +1,328 @@
+{
+  "per_sequence": {
+    "Apartment_release_golden_skeleton_seq100_10s_sample_M1292": {
+      "Distance": {
+        "hazard_recall_mean": 0.2677777777777778,
+        "hazard_recall_cvar5": 0.25,
+        "flicker_mean": 0.03153153153153153,
+        "latency_ms_mean": 0.12718799601619443
+      },
+      "D-Lite(True)": {
+        "hazard_recall_mean": 0.4522222222222222,
+        "hazard_recall_cvar5": 0.25,
+        "flicker_mean": 0.06756756756756757,
+        "latency_ms_mean": 18.456014662515372
+      },
+      "Clio(aIB)": {
+        "hazard_recall_mean": 0.3,
+        "hazard_recall_cvar5": 0.25,
+        "flicker_mean": 0.6904761904761904,
+        "latency_ms_mean": 965.9867600013968
+      },
+      "Aegis-Core-v2": {
+        "hazard_recall_mean": 0.938888888888889,
+        "hazard_recall_cvar5": 0.7291666666666666,
+        "flicker_mean": 0.022581792318634424,
+        "latency_ms_mean": 2.977409334077189
+      }
+    },
+    "Apartment_release_clean_seq150_M1292": {
+      "Distance": {
+        "hazard_recall_mean": 0.08009920634920634,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.10834333733493397,
+        "latency_ms_mean": 0.11273333414768179
+      },
+      "D-Lite(True)": {
+        "hazard_recall_mean": 0.3239880952380953,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.19937975190076027,
+        "latency_ms_mean": 20.084571666181244
+      },
+      "Clio(aIB)": {
+        "hazard_recall_mean": 0.1261904761904762,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.6590136054421769,
+        "latency_ms_mean": 705.1912933394002
+      },
+      "Aegis-Core-v2": {
+        "hazard_recall_mean": 0.8889285714285715,
+        "hazard_recall_cvar5": 0.5555555555555555,
+        "flicker_mean": 0.14004596537930303,
+        "latency_ms_mean": 2.7143566655771187
+      }
+    },
+    "Apartment_release_clean_seq131_M1292": {
+      "Distance": {
+        "hazard_recall_mean": 0.10305555555555555,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.07553021208483393,
+        "latency_ms_mean": 0.15323499780303487
+      },
+      "D-Lite(True)": {
+        "hazard_recall_mean": 0.09430555555555556,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.2209883953581432,
+        "latency_ms_mean": 22.077608335045323
+      },
+      "Clio(aIB)": {
+        "hazard_recall_mean": 0.3277777777777778,
+        "hazard_recall_cvar5": 0.25,
+        "flicker_mean": 0.61281179138322,
+        "latency_ms_mean": 927.8865199924136
+      },
+      "Aegis-Core-v2": {
+        "hazard_recall_mean": 0.975,
+        "hazard_recall_cvar5": 0.7083333333333334,
+        "flicker_mean": 0.1084296189338206,
+        "latency_ms_mean": 3.5130841701175086
+      }
+    },
+    "Apartment_release_meal_seq142_M1292": {
+      "Distance": {
+        "hazard_recall_mean": 0.0020833333333333333,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.07029478458049886,
+        "latency_ms_mean": 0.08352166623808444
+      },
+      "D-Lite(True)": {
+        "hazard_recall_mean": 0.19055555555555556,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.16800053354675204,
+        "latency_ms_mean": 9.65214750128022
+      },
+      "Clio(aIB)": {
+        "hazard_recall_mean": 0.09333333333333332,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.8007369614512472,
+        "latency_ms_mean": 324.14882665810484
+      },
+      "Aegis-Core-v2": {
+        "hazard_recall_mean": 0.8395833333333333,
+        "hazard_recall_cvar5": 0.3055555555555555,
+        "flicker_mean": 0.1399375601056273,
+        "latency_ms_mean": 1.7276416687915723
+      }
+    },
+    "Apartment_release_meal_seq146_M1292": {
+      "Distance": {
+        "hazard_recall_mean": 0.12708333333333333,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.21225156729358402,
+        "latency_ms_mean": 0.12579916801769286
+      },
+      "D-Lite(True)": {
+        "hazard_recall_mean": 0.24793650793650793,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.29775243430705617,
+        "latency_ms_mean": 20.06879917025799
+      },
+      "Clio(aIB)": {
+        "hazard_recall_mean": 0.1711111111111111,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.6814058956916098,
+        "latency_ms_mean": 773.3495666606663
+      },
+      "Aegis-Core-v2": {
+        "hazard_recall_mean": 0.9237301587301587,
+        "hazard_recall_cvar5": 0.5,
+        "flicker_mean": 0.1746917318963785,
+        "latency_ms_mean": 3.3813149983567805
+      }
+    },
+    "Apartment_release_work_seq139_M1292": {
+      "Distance": {
+        "hazard_recall_mean": 0.13859126984126982,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.11691343203948246,
+        "latency_ms_mean": 0.0854458330043902
+      },
+      "D-Lite(True)": {
+        "hazard_recall_mean": 0.30210317460317454,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.23719487795118047,
+        "latency_ms_mean": 14.594224171014503
+      },
+      "Clio(aIB)": {
+        "hazard_recall_mean": 0.11666666666666667,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.7613378684807256,
+        "latency_ms_mean": 361.13961999459815
+      },
+      "Aegis-Core-v2": {
+        "hazard_recall_mean": 0.9157142857142857,
+        "hazard_recall_cvar5": 0.6388888888888887,
+        "flicker_mean": 0.11678673334135521,
+        "latency_ms_mean": 2.021908332244493
+      }
+    },
+    "Apartment_release_work_seq106_M1292": {
+      "Distance": {
+        "hazard_recall_mean": 0.15047619047619049,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.1717687074829932,
+        "latency_ms_mean": 0.10459499996310721
+      },
+      "D-Lite(True)": {
+        "hazard_recall_mean": 0.36702380952380953,
+        "hazard_recall_cvar5": 0.10317460317460315,
+        "flicker_mean": 0.23556089102307587,
+        "latency_ms_mean": 32.52191083156504
+      },
+      "Clio(aIB)": {
+        "hazard_recall_mean": 0.06174603174603175,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.7446145124716553,
+        "latency_ms_mean": 1118.4973866678774
+      },
+      "Aegis-Core-v2": {
+        "hazard_recall_mean": 0.8690674603174604,
+        "hazard_recall_cvar5": 0.6166666666666666,
+        "flicker_mean": 0.14327751942680267,
+        "latency_ms_mean": 2.680729165634451
+      }
+    },
+    "Apartment_release_decoration_seq135_M1292": {
+      "Distance": {
+        "hazard_recall_mean": 0.020833333333333332,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.13101907429638524,
+        "latency_ms_mean": 0.03707333671627566
+      },
+      "D-Lite(True)": {
+        "hazard_recall_mean": 0.2736111111111111,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.12715086034413767,
+        "latency_ms_mean": 2.645969998654133
+      },
+      "Clio(aIB)": {
+        "hazard_recall_mean": 0.26666666666666666,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.6524943310657597,
+        "latency_ms_mean": 73.84860000262658
+      },
+      "Aegis-Core-v2": {
+        "hazard_recall_mean": 0.81875,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.11176470588235293,
+        "latency_ms_mean": 0.7865349999822987
+      }
+    },
+    "Apartment_release_decoration_seq140_M1292": {
+      "Distance": {
+        "hazard_recall_mean": 0.6143055555555555,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.1837735094037615,
+        "latency_ms_mean": 0.14617249932295331
+      },
+      "D-Lite(True)": {
+        "hazard_recall_mean": 0.6259722222222223,
+        "hazard_recall_cvar5": 0.075,
+        "flicker_mean": 0.2440976390556223,
+        "latency_ms_mean": 18.025789166373823
+      },
+      "Clio(aIB)": {
+        "hazard_recall_mean": 0.39888888888888885,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.5853174603174602,
+        "latency_ms_mean": 668.4775933351679
+      },
+      "Aegis-Core-v2": {
+        "hazard_recall_mean": 0.8605555555555555,
+        "hazard_recall_cvar5": 0.4166666666666667,
+        "flicker_mean": 0.17647119547697115,
+        "latency_ms_mean": 2.132789170718752
+      }
+    },
+    "Apartment_release_multiskeleton_party_seq127_M1292": {
+      "Distance": {
+        "hazard_recall_mean": 0.22694444444444445,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.12388288648792851,
+        "latency_ms_mean": 0.22876666722974429
+      },
+      "D-Lite(True)": {
+        "hazard_recall_mean": 0.43541666666666656,
+        "hazard_recall_cvar5": 0.06666666666666667,
+        "flicker_mean": 0.1671001734026944,
+        "latency_ms_mean": 55.68980333482614
+      },
+      "Clio(aIB)": {
+        "hazard_recall_mean": 0.03333333333333333,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.7947845804988661,
+        "latency_ms_mean": 2269.2879666613103
+      },
+      "Aegis-Core-v2": {
+        "hazard_recall_mean": 0.8202777777777778,
+        "hazard_recall_cvar5": 0.3611111111111111,
+        "flicker_mean": 0.16858181869238925,
+        "latency_ms_mean": 4.5160641631809995
+      }
+    },
+    "Apartment_release_multiuser_clean_seq120_M1292": {
+      "Distance": {
+        "hazard_recall_mean": 0.2727777777777778,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.15056022408963587,
+        "latency_ms_mean": 0.14053833632109067
+      },
+      "D-Lite(True)": {
+        "hazard_recall_mean": 0.6198611111111111,
+        "hazard_recall_cvar5": 0.24166666666666667,
+        "flicker_mean": 0.21915432839802587,
+        "latency_ms_mean": 27.71618833357934
+      },
+      "Clio(aIB)": {
+        "hazard_recall_mean": 0.2611111111111111,
+        "hazard_recall_cvar5": 0.0,
+        "flicker_mean": 0.516156462585034,
+        "latency_ms_mean": 1410.2622399999138
+      },
+      "Aegis-Core-v2": {
+        "hazard_recall_mean": 0.8791666666666667,
+        "hazard_recall_cvar5": 0.4444444444444444,
+        "flicker_mean": 0.15692374989211372,
+        "latency_ms_mean": 6.164309997984674
+      }
+    }
+  },
+  "summary": {
+    "Distance": {
+      "cov_mean": 0.18218434343434342,
+      "cov_ci95": 0.09982903125099528,
+      "cvar_mean": 0.022727272727272728,
+      "cvar_ci95": 0.044545454545454534,
+      "flicker_mean": 0.12507902423868808,
+      "flicker_ci95": 0.03152899504134302,
+      "latency_mean": 0.12227898498002271
+    },
+    "D-Lite(True)": {
+      "cov_mean": 0.35754509379509386,
+      "cov_ci95": 0.0982526563654077,
+      "cvar_mean": 0.06695526695526695,
+      "cvar_ci95": 0.05677672112429851,
+      "flicker_mean": 0.19854067753227414,
+      "flicker_ci95": 0.0373216147858155,
+      "latency_mean": 21.957547924663007
+    },
+    "Clio(aIB)": {
+      "cov_mean": 0.1960750360750361,
+      "cov_ci95": 0.07125693090943774,
+      "cvar_mean": 0.045454545454545456,
+      "cvar_ci95": 0.059763998671358,
+      "flicker_mean": 0.6817408781694495,
+      "flicker_ci95": 0.05290446348761662,
+      "latency_mean": 872.5523975739525
+    },
+    "Aegis-Core-v2": {
+      "cov_mean": 0.8845147907647907,
+      "cov_ci95": 0.029540047270020225,
+      "cvar_mean": 0.47967171717171714,
+      "cvar_ci95": 0.12459241446766883,
+      "flicker_mean": 0.13268112648597716,
+      "flicker_ci95": 0.025880052842192414,
+      "latency_mean": 2.9651038787878035
+    }
+  }
+}

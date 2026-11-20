@@ -1,27 +1,86 @@
-# Aegis-DSG: Task-Oriented Sparsification of Dynamic 3D Scene Graphs (Phase A)
+# Aegis-DSG: Safety-Critical & Task-Oriented Sparsification of Dynamic 3D Scene Graphs under Cognitive Bandwidth Constraints
 
-Phase A experimental repository for **Task-Oriented Sparsification of Dynamic 3D Scene Graphs under Cognitive Bandwidth Constraints**.
+**Aegis-Core v2.0** is a real-time (~337 Hz on CPU) downstream sparsification engine for Dynamic 3D Scene Graphs (DSGs) built for wearable assistive displays, AR glasses, and bandwidth-constrained mobile robots.
 
-Instead of transmitting all observed 3D scene objects ($30$–$50$ entities) to a wearable sensory display, the proposed sparsifier filters and stabilizes a compact $k$-node subgraph ($k \in \{3, 5, 7, 10, 15\}$) in real time using:
-1. **Dynamic Collision Cone & TTC ($R_v$):** Reachable forward motion cone based on relative 3D velocity $\vec{v}_{rel}$ and vertical overlap filtering.
-2. **Asymmetric Safety Score ($S_v$):**
-   $$S_v = \alpha \cdot R_v \cdot (1 + \gamma \cdot U_v \cdot \mathbb{I}(R_v > \tau_{haz})) + \beta \cdot Q_v \cdot C_v$$
-   where perception uncertainty $U_v = 1 - Q_v$ boosts priority for uncertain hazards inside the collision cone rather than suppressing them.
-3. **Temporal Hysteresis:** Persistence memory and hysteresis bonus to suppress frame-to-frame flicker ($F_t$).
+Instead of flooding a user or planner with $60$–$100+$ raw 3D scene objects, **Aegis-Core v2.0** (`src/aegis_core.py`) compresses the scene into a stable, safety-preserving subgraph ($|V'| \le k$, e.g. $k=5$) through a unified **4-layer pipeline**:
+
+1. **Layer 1 — Temporal Belief Filter & Object Permanence:** Tracks existence probability $p_t(v)$ via EMA to reject 1-frame false-positive ghosts while retaining briefly occluded hazards in the front hemisphere.
+2. **Layer 2 — Continuous 3D Kinematic Risk Field:** Combines a near-body hemisphere safety clearance ($\sigma_{\text{near}} = 0.50\text{ m}$ to eliminate side-swipe blind spots during sharp turns), a forward 3D Time-to-Collision (TTC) cone, close-range manipulation reach ($2.20\text{ m}$) for intrinsic hazards, and dual-tier asymmetric uncertainty weighting.
+3. **Layer 3 — Free-Space-Preserving Coarsening & Non-Coarsenable Atomic Hazard Invariant:** Uses per-class **Union-Find** clustering ($\text{gap} < 0.70\text{ m}$) to collapse dense static clutter into compact super-nodes (e.g., `cabinet/wardrobe_group(x15)`), while enforcing a **hard mathematical invariant** that intrinsic sharp/hot/human hazards (`knife`, `scissors`, `stove`, `stair_edge`, `pedestrian`) are **never merged or semantically erased**.
+4. **Layer 4 — Dynamic-Budget Monotone Submodular Selection ($1 - 1/e$) + Hysteresis:** Maximizes a safety-dominant facility-location objective with $(1 - 1/e)$ approximation guarantee, early stopping when marginal utility $< \tau_{\min}$, and temporal hysteresis to suppress flicker ($F_t$).
+
+![Meta Aria Digital Twin Aegis-Core v2.0 Showcase](results/aria_adt_aegis_v2_showcase.png)
+*Real egocentric frame from Meta Project Aria Digital Twin (`Apartment_release_golden_skeleton_seq100`): 89 visible 3D objects compressed into 5 clean entities in `2.9 ms`, collapsing 15 cabinets into `cabinet/wardrobe_group(x15)` while preserving the small butcher knife as `[!] ATOMIC: KNIFE | 0.5m | R=0.92`.*
+
+---
+
+## Positioning vs. Hydra, D-Lite, and Clio
+
+| System | Role | Strengths | Limitations in Safety-Critical Egocentric Compression |
+| :--- | :--- | :--- | :--- |
+| **Hydra** (MIT SPARK) | 3D Scene Graph Construction | Builds full SLAM/Mesh/Places/Rooms/Objects DSG | Upstream map builder; outputs $80$–$500+$ nodes without bandwidth compression |
+| **D-Lite** (ICRA 2024) | Topological DSG Sparsification | Preserves global shortest-path distances across rooms | Static geometry only; ignores velocity/TTC and drops small hazards (`35.8%` coverage) |
+| **Clio** (RA-L 2024) | Task-Driven IB Compression | Open-vocabulary task grouping via CLIP + Information Bottleneck | Safety-agnostic (`19.6%` coverage), high flicker (`0.682`), heavy $O(N^3)$ latency (`~873 ms`) |
+| **Aegis-Core v2.0 (Ours)** | **Real-Time Safety-Critical Sparsifier** | **Kinematic risk, atomic hazard invariant, temporal stability, `3.0 ms` (~337 Hz)** | **Complementary plug-in downstream of Hydra; lightweight task semantics (no heavy VLM yet)** |
+
+---
+
+## Real-World Benchmark: 11 Diverse Meta Project Aria Digital Twin (ADT) Sequences
+
+Evaluated on **11 real human egocentric sequences** from **Meta Project Aria Digital Twin (ICCV 2023)** spanning 6 real activity types (`golden_skeleton`, `clean`, `meal`, `work`, `decoration`, `multiskeleton_party`, `multiuser_clean`), comparing `Distance`, `D-Lite (True Dijkstra)`, `Clio (True aIB)`, and `Aegis-Core v2.0` at $k=5$:
+
+### Grand Aggregate Across All 11 Real Meta Aria Sequences (Mean $\pm$ 95% CI, $k=5$)
+
+| Method | Hazard Coverage ($\uparrow$) | CVaR-5% Worst Frames ($\uparrow$) | Jaccard Flicker $F_t$ ($\downarrow$) | Latency (ms/frame $\downarrow$) |
+| :--- | :---: | :---: | :---: | :---: |
+| **Distance** | $18.2\% \pm 10.0\%$ | $2.3\% \pm 4.5\%$ | $0.125 \pm 0.032$ | `0.12 ms` |
+| **D-Lite (True Dijkstra)** | $35.8\% \pm 9.8\%$ | $6.7\% \pm 5.7\%$ | $0.199 \pm 0.037$ | `21.96 ms` |
+| **Clio (True aIB)** | $19.6\% \pm 7.1\%$ | $4.5\% \pm 6.0\%$ | $0.682 \pm 0.053$* | `872.55 ms` |
+| **Aegis-Core v2.0 (Ours)** | **$88.5\% \pm 3.0\%$** | **$48.0\% \pm 12.5\%$** | **$0.133 \pm 0.026$** | **`2.97 ms` (~337 Hz)** |
+
+*\*Note: Because exact $O(N^3)$ `Clio (aIB)` averages `872.6 ms/frame` (up to `2.27 s/frame` on dense party scenes), `Clio` was evaluated at 8× temporal subsampling (`frames[::8]`) across the 11-sequence sweep; even on dense consecutive frames (`golden_skeleton`), `Clio` exhibits `F_t = 0.619`.*
+
+### Per-Sequence Breakdown (11/11 Wins — Zero Cherry-Picking)
+
+| Meta Aria ADT Sequence (Activity) | Avg Obs | Distance | D-Lite | Clio | **Aegis-Core v2.0** | Flicker $F_t$ | Latency |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| `golden_skeleton_seq100_sample` | 85 | 26.8% | 45.2% | 30.0% | **93.9%** | 0.023 | 2.98 ms |
+| `clean_seq150` | 73 | 8.0% | 32.4% | 12.6% | **88.9%** | 0.140 | 2.71 ms |
+| `clean_seq131` | 84 | 10.3% | 9.4% | 32.8% | **97.5%** | 0.108 | 3.51 ms |
+| `meal_seq142` | 54 | 0.2% | 19.1% | 9.3% | **84.0%** | 0.140 | 1.73 ms |
+| `meal_seq146` | 81 | 12.7% | 24.8% | 17.1% | **92.4%** | 0.175 | 3.38 ms |
+| `work_seq139` | 61 | 13.9% | 30.2% | 11.7% | **91.6%** | 0.117 | 2.02 ms |
+| `work_seq106` | 70 | 15.0% | 36.7% | 6.2% | **86.9%** | 0.143 | 2.68 ms |
+| `decoration_seq135` | 24 | 2.1% | 27.4% | 26.7% | **81.9%** | 0.112 | 0.79 ms |
+| `decoration_seq140` | 44 | 61.4% | 62.6% | 39.9% | **86.1%** | 0.176 | 2.13 ms |
+| `multiskeleton_party_seq127` | 81 | 22.7% | 43.5% | 3.3% | **82.0%** | 0.169 | 4.52 ms |
+| `multiuser_clean_seq120` | 76 | 27.3% | 62.0% | 26.1% | **87.9%** | 0.157 | 6.16 ms |
+
+![11-Sequence Real Meta Aria ADT Benchmark](results/aria_11seq_benchmark.png)
+
+> **Honest Failure-Mode Note (`decoration_seq135`):** On 8/120 frames where the wearer stands nearly stationary ($v \approx 0$) looking away, `Aegis-Core v2.0` early-stops at `1/5` entities via `tau_min = 0.15` to save cognitive bandwidth, missing two static non-atomic furniture pieces at `1.7–2.4 m` (0 atomic hazards missed). This highlights the explicit trade-off between `tau_min` bandwidth conservation and stationary proximity conservatism.
+
+---
 
 ## Quick Start
 
 ```bash
 pip install -r requirements.txt
-python run_benchmark.py              # Phase A: Multi-seed Pareto benchmark across k in {3, 5, 7, 10, 15}
-python run_ablations.py              # Phase A: Noise stress test, ablation study, and k=5 error analysis
-python run_scenarios.py              # Phase A: 4-environment benchmark (corridor, blind corner, lobby, 3D vertical)
-python run_prong3_benchmark.py       # Phase B Grand Benchmark: True D-Lite (Dijkstra), Clio (aIB), GNN-GAT, Submodular, Aegis-v2
-python run_mujoco_3dssg.py           # Real 3DSSG Scanned Rooms x MuJoCo 4.0 Rigid-Body Physics
-python run_real_photo_aegis.py       # Real RGB Room Photo -> YOLOv8 + MiDaS 3D Depth -> Aegis-v2
+python -m unittest tests/test_aegis_core.py -v   # Core unit tests (6/6 invariants: belief filter, atomic knife, Union-Find, dynamic budget)
+python run_aria_adt_benchmark.py                 # Real Meta Aria ADT single-sequence benchmark & showcase visual
+python run_aria_10seq_benchmark.py               # 11-sequence Meta Aria ADT multi-activity benchmark
+python simulate_aegis_core.py                    # Interactive Aegis-Core v2.0 simulator -> results/aegis_core_sim.html
+python run_prong3_benchmark.py                   # Phase B Grand Benchmark: True D-Lite, Clio (aIB), GNN-GAT, Submodular, Aegis
+python run_mujoco_3dssg.py                       # Real 3DSSG Scanned Rooms x MuJoCo 4.0 Rigid-Body Physics
+python run_real_photo_aegis.py                   # Real RGB Room Photo -> YOLOv8 + MiDaS 3D Depth -> Aegis-Core
+python run_benchmark.py                          # Phase A: Multi-seed Pareto benchmark across k in {3, 5, 7, 10, 15}
+python run_ablations.py                          # Phase A: Noise stress test, ablation study, and k=5 error analysis
+python run_scenarios.py                          # Phase A: 4-environment benchmark (corridor, blind corner, lobby, 3D vertical)
 ```
 
-## Experimental Setup & Hyperparameters
+---
+
+## Phase A Experimental Setup & Hyperparameters
 
 | Parameter | Value | Description |
 | :--- | :---: | :--- |

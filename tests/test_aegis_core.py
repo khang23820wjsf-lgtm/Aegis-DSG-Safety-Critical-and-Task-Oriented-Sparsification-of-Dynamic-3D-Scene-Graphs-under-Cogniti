@@ -100,6 +100,24 @@ class TestAegisCore(unittest.TestCase):
         self.assertEqual(len(out), 1)
         self.assertEqual(out[0].entity_id, "real_haz")
 
+    def test_v2_atomic_hazard_never_erased_by_coarsening(self) -> None:
+        aegis = AegisDSG(AegisConfig(min_navigable_gap_m=0.70))
+        # A sharp knife sits 0.05m from a cutting_board and tray (overflow at k=2):
+        # The knife MUST NOT be swallowed into a generic no_go_cluster!
+        g = _make_graph([
+            {"id": "k1", "label": "knife", "pos": [2.0, 0.7, 0.9], "size": [0.05, 0.25, 0.03], "haz": 1.0},
+            {"id": "b1", "label": "cutting_board", "pos": [2.1, 0.7, 0.9], "size": [0.4, 0.3, 0.04], "haz": 0.7},
+            {"id": "t1", "label": "tray", "pos": [1.9, 0.7, 0.9], "size": [0.4, 0.3, 0.05], "haz": 0.7},
+            {"id": "c1", "label": "chair", "pos": [2.0, 1.4, 0.4], "size": [0.5, 0.5, 0.8], "haz": 0.85},
+        ])
+        out = aegis.compress(g, self.agent, k=2)
+        self.assertEqual(len(out), 2)
+        atomic_out = [e for e in out if e.entity_id == "k1"]
+        self.assertEqual(len(atomic_out), 1)
+        self.assertFalse(atomic_out[0].is_super_node)
+        self.assertTrue(atomic_out[0].is_atomic_hazard)
+        self.assertEqual(atomic_out[0].label, "knife")
+
 
 if __name__ == "__main__":
     unittest.main()
