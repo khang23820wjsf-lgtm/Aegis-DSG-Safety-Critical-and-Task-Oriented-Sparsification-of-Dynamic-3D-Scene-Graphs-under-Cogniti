@@ -105,7 +105,7 @@ Evaluated on **11 real human egocentric sequences** from **Meta Project Aria Dig
 | **Clio (True aIB)** | 19.6% ± 7.1% | 4.5% ± 6.0% | 0.682 ± 0.053* | `872.55 ms` |
 | **Aegis-DSG (Ours)** | **88.5% ± 3.0%** | **48.0% ± 12.5%** | **0.133 ± 0.026** | **`2.97 ms` (~337 Hz)** |
 
-*\*Note: Because exact $O(N^3)$ `Clio (aIB)` averages `872.6 ms/frame` (up to `2.27 s/frame` on dense party scenes), `Clio` was evaluated at 8× temporal subsampling (`frames[::8]`) across the 11-sequence sweep; on dense consecutive frames (`golden_skeleton`), `Clio` still exhibits `F_t = 0.619`.*
+\*Note: Because exact $O(N^3)$ `Clio (aIB)` averages `872.6 ms/frame` (up to `2.27 s/frame` on dense party scenes), `Clio` was evaluated at 8× temporal subsampling (`frames[::8]`) across the 11-sequence sweep; on dense consecutive frames (`golden_skeleton`), `Clio` still exhibits `F_t = 0.619`.*
 
 #### Per-Sequence Breakdown (11/11 Wins — Zero Cherry-Picking)
 
