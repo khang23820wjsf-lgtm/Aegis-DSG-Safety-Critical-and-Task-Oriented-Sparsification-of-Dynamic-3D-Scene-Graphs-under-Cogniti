@@ -6,7 +6,7 @@ import unittest
 import networkx as nx
 import numpy as np
 
-from src.aegis_core import AegisConfig, AegisDSG
+from src.aegis_core import AegisConfig, AegisDSG, AffordanceRiskMapper
 from src.dsg_generator import AgentState
 
 
@@ -117,6 +117,54 @@ class TestAegisCore(unittest.TestCase):
         self.assertFalse(atomic_out[0].is_super_node)
         self.assertTrue(atomic_out[0].is_atomic_hazard)
         self.assertEqual(atomic_out[0].label, "knife")
+
+    def test_v2_multi_domain_affordance_mapper(self) -> None:
+        """Verify domain-agnostic protection on construction/lab scenes (not just indoor homes)."""
+        aegis = AegisDSG(AegisConfig(min_navigable_gap_m=0.70))
+        g = _make_graph([
+            {"id": "lab_acid", "label": "hydrochloric_acid_beaker", "pos": [2.0, 0.8, 0.9], "size": [0.15, 0.15, 0.2], "haz": 0.9},
+            {"id": "wire1", "label": "exposed_wire", "pos": [2.1, 0.8, 0.9], "size": [0.1, 0.3, 0.05], "haz": 0.9},
+            {"id": "box1", "label": "cardboard_box", "pos": [1.85, 0.8, 0.5], "size": [0.4, 0.4, 0.4], "haz": 0.7},
+            {"id": "box2", "label": "cardboard_box", "pos": [2.30, 0.8, 0.5], "size": [0.4, 0.4, 0.4], "haz": 0.7},
+        ])
+        out = aegis.compress(g, self.agent, k=3)
+        ids = {e.entity_id for e in out}
+        self.assertIn("lab_acid", ids)
+        self.assertIn("wire1", ids)
+        for e in out:
+            if e.entity_id in ("lab_acid", "wire1"):
+                self.assertTrue(e.is_atomic_hazard)
+                self.assertFalse(e.is_super_node)
+
+    def test_v2_zero_shot_embedding_offline_cache(self) -> None:
+        """Verify zero-shot semantic embedding hook caches unseen classes in O(1) at runtime."""
+        calls = {"n": 0}
+
+        def mock_clip_encoder(text: str) -> np.ndarray:
+            calls["n"] += 1
+            t = text.lower()
+            # Map unseen exotic label 'machete_tool' close to sharp_puncture prototype
+            if "sharp" in t or "machete" in t:
+                return np.array([1.0, 0.0, 0.0])
+            if "heat" in t or "flame" in t:
+                return np.array([0.0, 1.0, 0.0])
+            return np.array([0.0, 0.0, 1.0])
+
+        mapper = AffordanceRiskMapper(embedding_fn=mock_clip_encoder, embedding_threshold=0.75)
+        init_calls = calls["n"]  # 6 prototype axes encoded once at startup
+        self.assertEqual(init_calls, 6)
+
+        sev1, atom1, axis1 = mapper.assess("exotic_machete_tool")
+        self.assertTrue(atom1)
+        self.assertGreaterEqual(sev1, 0.90)
+        self.assertEqual(axis1, "emb:sharp_puncture")
+        after_first = calls["n"]
+
+        # Repeated runtime calls hit O(1) cache -> ZERO encoder calls!
+        for _ in range(100):
+            _, atom_rep, _ = mapper.assess("exotic_machete_tool")
+            self.assertTrue(atom_rep)
+        self.assertEqual(calls["n"], after_first)
 
 
 if __name__ == "__main__":

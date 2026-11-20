@@ -29,19 +29,156 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, List, Set, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
 import math
+import re
 import networkx as nx
 import numpy as np
 
 from src.dsg_generator import AgentState
 
 
-ATOMIC_HAZARD_KEYWORDS: Tuple[str, ...] = (
-    "knife", "blade", "scissors", "razor", "broken_glass",
-    "stove", "fire", "flame", "kettle", "boiling",
-    "stair_edge", "stairs", "drop_off", "pedestrian", "person",
+# Domain-agnostic physical hazard affordance taxonomy (home, lab, construction, street).
+# Each axis defines: (intrinsic_severity, prototype_description_for_embeddings, lexical_stems)
+PHYSICAL_HAZARD_AFFORDANCES: Dict[str, Tuple[float, str, Tuple[str, ...]]] = {
+    "sharp_puncture": (
+        0.95,
+        "sharp blade cutting piercing laceration tool edge",
+        ("knife", "blade", "scissors", "razor", "scalpel", "needle", "syringe", "saw", "chisel", "rebar", "broken_glass", "shard"),
+    ),
+    "thermal_combustion": (
+        0.92,
+        "extreme heat open flame burning hot surface boiling liquid",
+        ("stove", "fire", "flame", "kettle", "boiling", "burner", "furnace", "torch", "welder", "oven", "steam", "hot_plate"),
+    ),
+    "chemical_biohazard": (
+        0.94,
+        "corrosive toxic acid chemical reagent biohazard pressurized gas",
+        ("acid", "chemical", "biohazard", "solvent", "corrosive", "gas_cylinder", "beaker", "fume", "poison", "flammable"),
+    ),
+    "electrical_voltage": (
+        0.90,
+        "exposed live electric wire high voltage shock hazard",
+        ("exposed_wire", "live_wire", "live_cable", "high_voltage", "transformer", "power_line", "arc_flash"),
+    ),
+    "elevation_drop": (
+        0.92,
+        "steep drop off stairs cliff ledge pit open hole fall hazard",
+        ("stair_edge", "stairs", "drop_off", "ledge", "pit", "excavation", "manhole", "balcony_edge", "cliff"),
+    ),
+    "autonomous_living_or_heavy_dynamic": (
+        0.95,
+        "living human pedestrian child cyclist moving vehicle heavy machinery",
+        ("pedestrian", "person", "human", "child", "cyclist", "forklift", "crane", "car", "truck", "vehicle", "robot_arm", "excavator"),
+    ),
+}
+
+# Backward-compatible flattened tuple alias
+ATOMIC_HAZARD_KEYWORDS: Tuple[str, ...] = tuple(
+    kw for _, _, kws in PHYSICAL_HAZARD_AFFORDANCES.values() for kw in kws
 )
+
+
+class AffordanceRiskMapper:
+    """Offline-cached, domain-agnostic mapper from semantic class/affordances -> intrinsic hazard risk.
+
+    Supports two seamless modes at 0.00 ms steady-state runtime (O(1) dict cache):
+      1. Zero-shot embedding mode: pass any text encoder `embedding_fn(text) -> np.ndarray`
+         (e.g. CLIP / Sentence-Transformers). Prototype affordance vectors are encoded ONCE
+         at startup, and each unseen label is scored via max cosine similarity and cached.
+      2. Lightweight multi-domain mode (default, zero ML dependencies): matches explicit
+         physical affordance tags or multi-domain lexical stems (home, lab, construction, street)
+         and caches every resolved label in O(1).
+    """
+
+    def __init__(
+        self,
+        embedding_fn: Optional[Callable[[str], np.ndarray]] = None,
+        embedding_threshold: float = 0.72,
+        tau_atomic: float = 0.85,
+    ) -> None:
+        self.embedding_fn = embedding_fn
+        self.embedding_threshold = float(embedding_threshold)
+        self.tau_atomic = float(tau_atomic)
+        self._cache: Dict[str, Tuple[float, bool, str]] = {}
+        self._proto_vecs: Dict[str, Tuple[float, np.ndarray]] = {}
+
+        if self.embedding_fn is not None:
+            for axis, (sev, desc, _) in PHYSICAL_HAZARD_AFFORDANCES.items():
+                vec = np.asarray(self.embedding_fn(desc), dtype=float)
+                norm = float(np.linalg.norm(vec))
+                if norm > 1e-8:
+                    self._proto_vecs[axis] = (sev, vec / norm)
+
+    def precompute_vocabulary(self, labels: Iterable[str]) -> None:
+        """Warm the O(1) cache offline before real-time execution begins."""
+        for lbl in labels:
+            self.assess(lbl)
+
+    def assess(
+        self,
+        label: str,
+        explicit_flag: Optional[bool] = None,
+        affordances: Optional[Iterable[str]] = None,
+    ) -> Tuple[float, bool, str]:
+        """Return (intrinsic_severity, is_atomic_hazard, matched_affordance_axis)."""
+        if explicit_flag is not None:
+            flag = bool(explicit_flag)
+            return (1.0 if flag else 0.0, flag, "explicit" if flag else "none")
+
+        # Explicit physical affordance tags from upstream VLM/DSG take highest priority
+        if affordances:
+            aff_set = {str(a).lower().strip() for a in affordances}
+            for axis, (sev, _, _) in PHYSICAL_HAZARD_AFFORDANCES.items():
+                if axis in aff_set or any(tok in aff_set for tok in axis.split("_")):
+                    return (sev, sev >= self.tau_atomic, axis)
+
+        # Split camelCase (e.g. "FakeButcherKnife" -> "fake_butcher_knife") before lowercasing
+        camel_split = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", label)
+        key = camel_split.lower().strip().replace(" ", "_")
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        best_sev = 0.0
+        best_axis = "none"
+
+        # 1) Multi-domain token-boundary match (prevents substring false positives like "car" in "cardboard"/"carpet")
+        tokens = set(re.split(r"[^a-z0-9]+", key))
+        norm_spaced = " ".join(re.split(r"[^a-z0-9]+", key))
+        for axis, (sev, _, stems) in PHYSICAL_HAZARD_AFFORDANCES.items():
+            for st in stems:
+                if "_" in st:
+                    phrase = st.replace("_", " ")
+                    matched = phrase in norm_spaced or st in key
+                else:
+                    matched = st in tokens or any(tok == st + "s" or tok == st + "es" for tok in tokens)
+                if matched:
+                    if sev > best_sev:
+                        best_sev = sev
+                        best_axis = axis
+                    break
+
+        # 2) Optional offline zero-shot semantic embedding similarity (cached on first sight)
+        if best_sev < self.tau_atomic and self.embedding_fn is not None and self._proto_vecs:
+            vec = np.asarray(self.embedding_fn(label), dtype=float)
+            norm = float(np.linalg.norm(vec))
+            if norm > 1e-8:
+                u = vec / norm
+                for axis, (sev, p_vec) in self._proto_vecs.items():
+                    sim = float(np.dot(u, p_vec))
+                    if sim >= self.embedding_threshold:
+                        eff_sev = float(np.clip(sev * sim / self.embedding_threshold, 0.0, 1.0))
+                        if eff_sev > best_sev:
+                            best_sev = max(best_sev, sev)
+                            best_axis = f"emb:{axis}"
+
+        res = (best_sev, best_sev >= self.tau_atomic, best_axis)
+        self._cache[key] = res
+        return res
+
+
+_DEFAULT_AFFORDANCE_MAPPER = AffordanceRiskMapper()
 
 
 @dataclass(frozen=True)
@@ -69,6 +206,7 @@ class AegisConfig:
 
     # Layer 3: Free-Space-Preserving & Non-Coarsenable Coarsening
     min_navigable_gap_m: float = 0.70
+    max_aabb_bloat_ratio: float = 1.85
     proactive_same_class_merge: bool = True
 
     # Layer 4: Dynamic-Budget Monotone Submodular Selection & Hysteresis
@@ -131,19 +269,28 @@ def _xy_edge_gap(pos_a: np.ndarray, size_a: np.ndarray, pos_b: np.ndarray, size_
     return math.hypot(dx, dy)
 
 
-def _infer_is_atomic(label: str, explicit_flag: bool | None) -> bool:
+def _infer_is_atomic(
+    label: str,
+    explicit_flag: bool | None,
+    mapper: AffordanceRiskMapper | None = None,
+    affordances: Optional[Iterable[str]] = None,
+) -> bool:
     """Determine whether an object is an intrinsic non-coarsenable atomic hazard."""
-    if explicit_flag is not None:
-        return bool(explicit_flag)
-    lbl = label.lower().replace(" ", "_")
-    return any(kw in lbl for kw in ATOMIC_HAZARD_KEYWORDS)
+    m = mapper if mapper is not None else _DEFAULT_AFFORDANCE_MAPPER
+    _, is_atomic, _ = m.assess(label, explicit_flag=explicit_flag, affordances=affordances)
+    return is_atomic
 
 
 class AegisDSG:
     """Unified 4-Layer Aegis-DSG v2.0 Sparsifier."""
 
-    def __init__(self, config: AegisConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: AegisConfig | None = None,
+        risk_mapper: AffordanceRiskMapper | None = None,
+    ) -> None:
         self.config = config or AegisConfig()
+        self.risk_mapper = risk_mapper if risk_mapper is not None else _DEFAULT_AFFORDANCE_MAPPER
         self.name = "Aegis-Core-v2"
         self._cone_half_rad = math.radians(self.config.cone_half_angle_deg)
         self._tracks: Dict[str, _TrackState] = {}
@@ -173,7 +320,11 @@ class AegisDSG:
             size = np.array(d["size"], dtype=float)
             vel = np.array(d.get("vel", np.zeros(3)), dtype=float)
             lbl = str(d.get("label", "object"))
-            is_atomic = _infer_is_atomic(lbl, d.get("is_atomic_hazard"))
+            intrinsic_sev, is_atomic, _ = self.risk_mapper.assess(
+                lbl,
+                explicit_flag=d.get("is_atomic_hazard"),
+                affordances=d.get("affordances"),
+            )
 
             if nid in self._tracks:
                 tr = self._tracks[nid]
@@ -313,6 +464,17 @@ class AegisDSG:
     # Layer 3: Free-Space-Preserving & Non-Coarsenable Coarsening (Fast Union-Find)
     # ------------------------------------------------------------------
     @staticmethod
+    def _aabb_bloat_ok(group: List[AegisEntity], max_ratio: float) -> bool:
+        """Ensure merging a group's AABBs does not hallucinate fake walls across empty floor space."""
+        if len(group) <= 1:
+            return True
+        mins = np.min([e.pos[:2] - 0.5 * e.size[:2] for e in group], axis=0)
+        maxs = np.max([e.pos[:2] + 0.5 * e.size[:2] for e in group], axis=0)
+        merged_area = float(max(maxs[0] - mins[0], 0.05) * max(maxs[1] - mins[1], 0.05))
+        sum_area = sum(float(max(e.size[0], 0.05) * max(e.size[1], 0.05)) for e in group)
+        return merged_area <= max_ratio * max(sum_area, 1e-4)
+
+    @staticmethod
     def _merge_group(group: List[AegisEntity], merge_id: str, new_label: str) -> AegisEntity:
         """Merge a connected component of non-atomic geometric entities into 1 Super-Node."""
         mins = np.min([e.pos - 0.5 * e.size for e in group], axis=0)
@@ -364,6 +526,14 @@ class AegisDSG:
                     clustered.append(grp[0])
                     continue
                 parent = list(range(m))
+                comp_members: Dict[int, List[AegisEntity]] = {idx: [grp[idx]] for idx in range(m)}
+                # O(1) incremental bounding-box bounds per component root: (min_x, min_y, max_x, max_y, sum_area)
+                comp_bbox: Dict[int, Tuple[float, float, float, float, float]] = {}
+                for idx in range(m):
+                    px, py = float(grp[idx].pos[0]), float(grp[idx].pos[1])
+                    hx, hy = 0.5 * float(grp[idx].size[0]), 0.5 * float(grp[idx].size[1])
+                    area = max(2.0 * hx, 0.05) * max(2.0 * hy, 0.05)
+                    comp_bbox[idx] = (px - hx, py - hy, px + hx, py + hy, area)
 
                 def find(x: int) -> int:
                     while parent[x] != x:
@@ -377,13 +547,19 @@ class AegisDSG:
                         if _xy_edge_gap(pi, si, grp[j].pos, grp[j].size) < cfg.min_navigable_gap_m:
                             ri, rj = find(i), find(j)
                             if ri != rj:
-                                parent[rj] = ri
+                                b1, b2 = comp_bbox[ri], comp_bbox[rj]
+                                nx0, ny0 = min(b1[0], b2[0]), min(b1[1], b2[1])
+                                nx1, ny1 = max(b1[2], b2[2]), max(b1[3], b2[3])
+                                n_sum = b1[4] + b2[4]
+                                m_area = max(nx1 - nx0, 0.05) * max(ny1 - ny0, 0.05)
+                                if m_area <= cfg.max_aabb_bloat_ratio * n_sum:
+                                    parent[rj] = ri
+                                    comp_members[ri].extend(comp_members[rj])
+                                    comp_bbox[ri] = (nx0, ny0, nx1, ny1, n_sum)
+                                    del comp_members[rj]
+                                    del comp_bbox[rj]
 
-                comps: Dict[int, List[AegisEntity]] = defaultdict(list)
-                for idx in range(m):
-                    comps[find(idx)].append(grp[idx])
-
-                for comp in comps.values():
+                for comp in comp_members.values():
                     if len(comp) == 1:
                         clustered.append(comp[0])
                     else:
@@ -412,7 +588,11 @@ class AegisDSG:
             for i in range(len(geom_haz)):
                 for j in range(i + 1, len(geom_haz)):
                     gap = _xy_edge_gap(geom_haz[i].pos, geom_haz[i].size, geom_haz[j].pos, geom_haz[j].size)
-                    if gap < cfg.min_navigable_gap_m and gap < best_gap:
+                    if (
+                        gap < cfg.min_navigable_gap_m
+                        and gap < best_gap
+                        and self._aabb_bloat_ok([geom_haz[i], geom_haz[j]], cfg.max_aabb_bloat_ratio)
+                    ):
                         best_gap = gap
                         best_pair = (i, j)
             if best_pair is None:

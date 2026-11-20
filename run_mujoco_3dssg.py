@@ -11,9 +11,9 @@ import argparse
 from typing import List
 import numpy as np
 
+from src.aegis_core import AegisConfig, AegisDSG
 from src.baselines import DistanceSparsifier
-from src.phase_b.aegis_v2 import AegisV2Sparsifier
-from src.phase_b.robotics_baselines import ClioAdaptedSparsifier, DLiteAdaptedSparsifier
+from src.phase_b.true_baselines import ClioTrueIBSparsifier, DLiteTrueSparsifier
 from src.physics.mujoco_env import run_mujoco_episode
 from src.real_data.loader_3dssg import load_3dssg_scan
 
@@ -27,21 +27,21 @@ def main() -> None:
 
     if args.view:
         scan_id, g_room = load_3dssg_scan(args.scan)
-        print(f"Launching 3D MuJoCo Viewer on REAL 3DSSG scan {scan_id} (Aegis-v2, k={args.k})...")
-        m = run_mujoco_episode(scan_id, g_room, AegisV2Sparsifier(), k=args.k, launch_viewer=True)
+        print(f"Launching 3D MuJoCo Viewer on REAL 3DSSG scan {scan_id} (Aegis-Core v2.0, k={args.k})...")
+        m = run_mujoco_episode(scan_id, g_room, AegisDSG(AegisConfig()), k=args.k, launch_viewer=True)
         print(f"Finished: reached={m.reached_goal} | real_collisions={m.physical_collisions} | SPL={m.spl} | coverage={m.hazard_coverage_mean*100:.1f}%")
         return
 
     scan_indices = list(range(10))
     methods = [
         DistanceSparsifier(),
-        DLiteAdaptedSparsifier(),
-        ClioAdaptedSparsifier(),
-        AegisV2Sparsifier(),
+        DLiteTrueSparsifier(),
+        ClioTrueIBSparsifier(),
+        AegisDSG(AegisConfig()),
     ]
 
-    print(f"\n=== REAL 3DSSG (10 Scanned Rooms) x MuJoCo 4.0 Rigid-Body Physics (k={args.k}, medium noise) ===")
-    header = f"{'Method':<10} | {'Success Rate':>12} | {'Real Collisions':>15} | {'SPL (↑)':>8} | {'Hazard Coverage':>15}"
+    print(f"\n=== REAL 3DSSG (10 Scanned Rooms) x MuJoCo 4.0 Rigid-Body Physics (Local-A*+DWA, k={args.k}, medium noise) ===")
+    header = f"{'Method':<14} | {'Success Rate':>12} | {'Real Collisions':>15} | {'SPL (↑)':>8} | {'Hazard Coverage':>15}"
     print(header)
     print("-" * len(header))
 
@@ -55,7 +55,7 @@ def main() -> None:
         cols = float(np.mean([r.physical_collisions for r in ep_results]))
         spl = float(np.mean([r.spl for r in ep_results]))
         cov = float(np.mean([r.hazard_coverage_mean for r in ep_results])) * 100
-        print(f"{method.name:<10} | {sr:11.1f}% | {cols:15.2f} | {spl:8.3f} | {cov:14.1f}%")
+        print(f"{method.name:<14} | {sr:11.1f}% | {cols:15.2f} | {spl:8.3f} | {cov:14.1f}%")
 
 
 if __name__ == "__main__":

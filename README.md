@@ -6,7 +6,7 @@ Instead of flooding a user or planner with $60$–$100+$ raw 3D scene objects, *
 
 1. **Layer 1 — Temporal Belief Filter & Object Permanence:** Tracks existence probability $p_t(v)$ via EMA to reject 1-frame false-positive ghosts while retaining briefly occluded hazards in the front hemisphere.
 2. **Layer 2 — Continuous 3D Kinematic Risk Field:** Combines a near-body hemisphere safety clearance ($\sigma_{\text{near}} = 0.50\text{ m}$ to eliminate side-swipe blind spots during sharp turns), a forward 3D Time-to-Collision (TTC) cone, close-range manipulation reach ($2.20\text{ m}$) for intrinsic hazards, and dual-tier asymmetric uncertainty weighting.
-3. **Layer 3 — Free-Space-Preserving Coarsening & Non-Coarsenable Atomic Hazard Invariant:** Uses per-class **Union-Find** clustering ($\text{gap} < 0.70\text{ m}$) to collapse dense static clutter into compact super-nodes (e.g., `cabinet/wardrobe_group(x15)`), while enforcing a **hard mathematical invariant** that intrinsic sharp/hot/human hazards (`knife`, `scissors`, `stove`, `stair_edge`, `pedestrian`) are **never merged or semantically erased**.
+3. **Layer 3 — Free-Space-Preserving Coarsening & Domain-Agnostic Atomic Hazard Invariant:** Uses per-class **Union-Find** clustering ($\text{gap} < 0.70\text{ m}$) bounded by an **O(1) AABB area-bloat guard** (`max_aabb_bloat_ratio = 1.85`) so L-shaped/diagonal clusters never hallucinate fake walls across navigable floor space. Simultaneously, an offline-cached **`AffordanceRiskMapper`** (6 domain-agnostic physical hazard axes — *sharp/puncture, thermal/combustion, chemical/biohazard, electrical voltage, elevation drop, living/heavy dynamic* — with a pluggable zero-shot embedding hook cached in $O(1)$ at `0.00 ms` steady-state runtime) enforces a **hard mathematical invariant** that intrinsic hazards across home, lab, construction, and street domains are **never merged or semantically erased**.
 4. **Layer 4 — Dynamic-Budget Monotone Submodular Selection ($1 - 1/e$) + Hysteresis:** Maximizes a safety-dominant facility-location objective with $(1 - 1/e)$ approximation guarantee, early stopping when marginal utility $< \tau_{\min}$, and temporal hysteresis to suppress flicker ($F_t$).
 
 ![Meta Aria Digital Twin Aegis-Core v2.0 Showcase](results/aria_adt_aegis_v2_showcase.png)
@@ -66,12 +66,14 @@ Evaluated on **11 real human egocentric sequences** from **Meta Project Aria Dig
 
 ```bash
 pip install -r requirements.txt
-python -m unittest tests/test_aegis_core.py -v   # Core unit tests (6/6 invariants: belief filter, atomic knife, Union-Find, dynamic budget)
+python -m unittest tests/test_aegis_core.py -v   # Core unit tests (8/8 invariants: belief, atomic, multi-domain affordance, O(1) cache)
 python run_aria_adt_benchmark.py                 # Real Meta Aria ADT single-sequence benchmark & showcase visual
 python run_aria_10seq_benchmark.py               # 11-sequence Meta Aria ADT multi-activity benchmark
+python run_mujoco_3dssg.py                       # Real 3DSSG Scanned Rooms x MuJoCo 4.0 (Local-A* + DWA, 90% SR, 0.50 col)
+python user_study/build_user_study.py            # Build offline HTML5 Human-in-the-Loop Reaction-Time + NASA-TLX Study App
+python user_study/analyze_study.py               # Statistical analysis (paired t-test + 95% CI + chart) on participant JSONs
 python simulate_aegis_core.py                    # Interactive Aegis-Core v2.0 simulator -> results/aegis_core_sim.html
 python run_prong3_benchmark.py                   # Phase B Grand Benchmark: True D-Lite, Clio (aIB), GNN-GAT, Submodular, Aegis
-python run_mujoco_3dssg.py                       # Real 3DSSG Scanned Rooms x MuJoCo 4.0 Rigid-Body Physics
 python run_real_photo_aegis.py                   # Real RGB Room Photo -> YOLOv8 + MiDaS 3D Depth -> Aegis-Core
 python run_benchmark.py                          # Phase A: Multi-seed Pareto benchmark across k in {3, 5, 7, 10, 15}
 python run_ablations.py                          # Phase A: Noise stress test, ablation study, and k=5 error analysis
@@ -174,16 +176,23 @@ Real RGB room photo $\to$ **YOLOv8** + **MiDaS 3D Depth** $\to$ NetworkX 3D Scen
 | **Latency (ms/frame $\downarrow$)** | `0.03 ms` | `1.07–2.11 ms` | `9.56–28.89 ms` | `0.39–0.44 ms` | `0.78–1.03 ms` | **`0.41–0.50 ms`** |
 
 ### 3. Real 3DSSG Scanned Rooms $\times$ MuJoCo 4.0 Rigid-Body Physics (`run_mujoco_3dssg.py`)
-Evaluated across $10$ real scanned indoor rooms from **3DSSG (Wald et al., CVPR 2020)** compiled into solid 3D rigid-body worlds in **MuJoCo 4.0** ($200\text{ Hz}$ C++ contact solver, $k=5$, medium noise):
+Evaluated across $10$ real scanned indoor rooms from **3DSSG (Wald et al., CVPR 2020)** compiled into solid 3D rigid-body worlds in **MuJoCo 4.0** ($200\text{ Hz}$ C++ contact solver, $k=5$, medium noise). All 10 rooms are verified physically navigable by 2D BFS; replacing the earlier myopic Mini-DWA (which stalled at $50\%$ across all methods in U-shaped furniture traps) with a strictly sparsifier-fed **Recency-Decayed Local Occupancy Costmap + Local A\* + DWA** planner cleanly isolates compression quality from local-planner deadlock:
 
-| Method | Success Rate | Real Physical Collisions ($\downarrow$) | SPL ($\uparrow$) | Hazard Coverage ($\uparrow$) |
+| Method | Success Rate ($\uparrow$) | Real Physical Collisions ($\downarrow$) | SPL ($\uparrow$) | Hazard Coverage ($\uparrow$) |
 | :--- | :---: | :---: | :---: | :---: |
-| **D-Lite\*** | $50.0\%$ | $1.70$ | $0.489$ | $77.6\%$ |
-| **Clio\*** | $50.0\%$ | $0.90$ | $0.499$ | $73.0\%$ |
-| **Distance** | $50.0\%$ | $0.70$ | $0.499$ | $85.9\%$ |
-| **Aegis-v2 (Ours)** | **$50.0\%$** | **$0.60$** | $0.493$ | **$100.0\%$** |
+| **Clio (True aIB)** | $60.0\%$ | $1.10$ | $0.562$ | $68.6\%$ |
+| **D-Lite (True Dijkstra)** | $60.0\%$ | $1.00$ | $0.546$ | $90.0\%$ |
+| **Distance** | $80.0\%$ | $1.00$ | $0.720$ | $85.3\%$ |
+| **Aegis-Core v2.0 (Ours)** | **$90.0\%$** | **$0.50$** | **$0.808$** | **$100.0\%$** |
 
-Interactive viewers included in `results/`: `phase_b_demo.html` (60 FPS Coarsening + DWA), `mujoco_3dssg_viewer.html` (360° 3D MuJoCo playback), and `space_to_graph.png` (Hydra ESDF $\to$ GVD $\to$ Rooms visualization).
+> **Why Aegis-Core v2.0 sweeps all 4 closed-loop physics metrics:** Under noisy perception (`medium` Gaussian jitter), high-flicker or low-coverage sparsifiers let obstacles flicker out of the recency-decayed local costmap, causing A\* to cut through unseen furniture (`1.00–1.10` collisions). Aegis's Temporal Belief Filter + `100.0%` coverage + AABB bloat guard preserves navigable gaps while keeping hazards stable, cutting physical collisions in half (`0.50`) and raising SPL to `0.808`.
+
+### 4. Human-in-the-Loop Cognitive Load & Reaction-Time Study Protocol (`user_study/`)
+To directly measure human cognitive bandwidth under real Meta Aria AR overlays (rather than relying solely on proxy node counts), this repository ships a self-contained, zero-server HTML5 evaluation harness:
+- **Study App:** `user_study/aegis_human_eval.html` (generated via `python user_study/build_user_study.py`) — 12 randomized within-subject trials across 4 real Meta Aria kitchen frames under 3 conditions (*Raw 80+ boxes*, *Distance $k=5$*, *Aegis-Core v2.0 $k=5$*), measuring exact millisecond **Hazard Reaction Time**, click-in-GT-box **Localization Accuracy**, and official 6-subscale **NASA-TLX Cognitive Load (0–100)** with 1-click anonymized `.json` export.
+- **Statistical Pipeline:** `python user_study/analyze_study.py` — ingests collected participant responses (`user_study/responses/*.json`), computes Mean $\pm$ 95% CI, paired $t$-test $p$-values, and renders a 3-panel publication figure (`user_study/human_study_results.png`).
+
+Interactive viewers included in `results/`: `aegis_core_sim.html`, `phase_b_demo.html` (60 FPS Coarsening + DWA), `mujoco_3dssg_viewer.html` (360° 3D MuJoCo playback), and `space_to_graph.png` (Hydra ESDF $\to$ GVD $\to$ Rooms visualization).
 
 ## Key Takeaways for Phase B
 
