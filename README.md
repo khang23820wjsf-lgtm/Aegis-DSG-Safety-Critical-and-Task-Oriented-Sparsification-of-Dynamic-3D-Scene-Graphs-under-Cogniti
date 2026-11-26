@@ -2,20 +2,19 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/)
-[![Release](https://img.shields.io/badge/Release-v4.0--frozen-2ea44f.svg)](https://github.com/khang23820wjsf-lgtm/Aegis-DSG-Safety-Critical-and-Task-Oriented-Compression-of-Dynamic-3D-Scene-Graphs-under-Sensory-Ba/releases)
 [![Unit Tests](https://img.shields.io/badge/Unit%20Tests-33%2F33%20Passing-brightgreen.svg)](tests/)
 [![Paper](https://img.shields.io/badge/arXiv%20LaTeX-paper%2Fmain.tex-b31b1b.svg)](paper/main.tex)
 
-**Aegis-DSG (v4.0 — Counterfactual Control-Barrier Sparsification + Online ACI)** is a real-time (~138 Hz on CPU) downstream sparsification engine for Dynamic 3D Scene Graphs (DSGs), designed for wearable assistive displays, AR glasses, and bandwidth-constrained mobile robots.
+**Aegis-DSG** (*Counterfactual Control-Barrier Sparsification + Non-Exchangeable Online ACI*) is a real-time (~138 Hz on CPU) downstream sparsification engine for Dynamic 3D Scene Graphs (DSGs), designed for wearable assistive displays, AR glasses, and bandwidth-constrained mobile robots.
 
-Rather than compressing a 3D Scene Graph purely by static geometry or open-loop heuristics, **Aegis-V4** reframes sparsification as **Control-First Counterfactual Compression**: retaining the minimal $k$-node subgraph ($k = 5$) that preserves the exact optimal safe velocity $u^*_{\text{CBF}}$ of a Discrete-Time Control Barrier Function QP (`p95` control distortion $= 0.000\text{ m/s}$), protected by **Non-Exchangeable Self-Supervised Online ACI** (`95.24%` empirical coverage with zero i.i.d. or GT assumptions).
+Rather than compressing a 3D Scene Graph purely by static geometry or open-loop heuristics, **Aegis-DSG** reframes sparsification as **Control-First Counterfactual Compression**: retaining the minimal $k$-node subgraph ($k = 5$) that preserves the exact optimal safe velocity $u^*_{\text{CBF}}$ of a Discrete-Time Control Barrier Function QP (`p95` control distortion $= 0.000\text{ m/s}$), protected by **Non-Exchangeable Self-Supervised Online ACI** (`95.24%` empirical coverage with zero i.i.d. or GT assumptions).
 
-![Aegis-V4 Breakthrough Benchmark](results/aegis_v4_breakthrough.png)
-*Aegis-V4 (`CCBS + Online ACI`) on 6 unseen real Meta Project Aria Digital Twin sequences and 10 real 3DSSG rooms in MuJoCo 4.0: **98.8% Hazard Coverage**, **82.8% CVaR-5%**, **100.0% Unmerged Atomic Recall**, **0.0198 m/s Control Regret** (`12.7×` lower than v3; `85×` lower than Distance/Clio), **95.24% Self-Supervised Online ACI**, and **7.26 ms/frame (~138 Hz)**.*
+![Aegis-DSG Breakthrough Benchmark](results/aegis_v4_breakthrough.png)
+*Aegis-DSG (`CCBS + Online ACI`) on 6 unseen real Meta Project Aria Digital Twin sequences and 10 real 3DSSG rooms in MuJoCo 4.0: **98.8% Hazard Coverage**, **82.8% CVaR-5%**, **100.0% Unmerged Atomic Recall**, **0.0198 m/s Control Regret** (`12.7×` lower than perception-first Aegis-Kin; `85×` lower than Distance/Clio), **95.24% Self-Supervised Online ACI**, and **7.26 ms/frame (~138 Hz)**.*
 
 ---
 
-## Flagship Results: Aegis-V4 (Control-First CCBS + Online ACI)
+## Flagship Results: Aegis-DSG (Control-First CCBS + Online ACI)
 
 ### A. 6 Unseen Real Meta Project Aria Sequences ($k = 5$, 210 Frames)
 
@@ -24,18 +23,18 @@ Rather than compressing a 3D Scene Graph purely by static geometry or open-loop 
 | **Distance** | 23.0% | 0.0% | 100.0% | `1.692 m/s` | 0.239 | `0.38 ms` |
 | **D-Lite (True Dijkstra)** | 46.7% | 11.6% | 91.3% | `1.528 m/s` | 0.306 | `75.55 ms` |
 | **Clio (True aIB)** | 17.6% | 3.3% | 0.0% | `1.738 m/s` | 0.593 | `2564.3 ms` |
-| **Aegis-v3 (Perception-First, Frozen)** | 87.2% | 53.4% | 100.0% | `0.252 m/s` | 0.265 | `17.20 ms` |
-| **Aegis-V4 (CCBS + Online ACI, Ours)** | **98.8%** | **82.8%** | **100.0%** | **`0.0198 m/s` (`p95=0.000`)** | **0.217** | **`7.26 ms` (~138 Hz)** |
+| **Aegis-Kin (No CBF/ACI)** | 87.2% | 53.4% | 100.0% | `0.252 m/s` | 0.265 | `17.20 ms` |
+| **Aegis-DSG (Ours)** | **98.8%** | **82.8%** | **100.0%** | **`0.0198 m/s` (`p95=0.000`)** | **0.217** | **`7.26 ms` (~138 Hz)** |
 
 ### B. Real 3DSSG Scanned Rooms × MuJoCo 4.0 Rigid-Body Physics (10 Rooms, $k = 5$)
 
 | Noise Regime | Method | Success Rate (↑) | Real Collisions (↓) | SPL (↑) | Hazard Cov. (↑) |
 | :--- | :--- | :---: | :---: | :---: | :---: |
 | `medium` | Distance / D-Lite / Clio | 80% / 60% / 60% | 1.00 / 1.00 / 1.10 | 0.720 / 0.546 / 0.562 | 85.3% / 90.0% / 68.6% |
-| `medium` | Aegis-v3 (DWA) | **90.0%** | **0.50** | **0.808** | **100.0%** |
-| `medium` | **Aegis-V4 (CCBS + CBF-QP)** | **90.0%** | **0.50** | 0.800 | 99.5% |
-| `heavy` | Aegis-v3 (DWA) | 60.0% | 1.10 | 0.575 | 98.7% |
-| `heavy` | **Aegis-V4 (CCBS + CBF-QP)** | **80.0% (+20 pp)** | **0.60 (-45.5%)** | **0.712 (+23.8%)** | **98.7%** |
+| `medium` | Aegis-Kin (DWA) | **90.0%** | **0.50** | **0.808** | **100.0%** |
+| `medium` | **Aegis-DSG (CCBS + CBF-QP)** | **90.0%** | **0.50** | 0.800 | 99.5% |
+| `heavy` | Aegis-Kin (DWA) | 60.0% | 1.10 | 0.575 | 98.7% |
+| `heavy` | **Aegis-DSG (CCBS + CBF-QP)** | **80.0% (+20 pp)** | **0.60 (-45.5%)** | **0.712 (+23.8%)** | **98.7%** |
 
 ![Aegis-DSG Real Meta Aria Kitchen Showcase](results/aria_adt_aegis_v2_showcase.png)
 *Real egocentric frame from Meta Project Aria Digital Twin (`Apartment_release_golden_skeleton_seq100`): 89 visible 3D objects compressed into 5 clean entities in `2.9 ms` — collapsing 15 static cabinets into `cabinet/wardrobe_group(x15)` while strictly preserving the small butcher knife as `[!] ATOMIC: KNIFE | 0.5m | R=0.92`.*
@@ -80,8 +79,8 @@ Rather than compressing a 3D Scene Graph purely by static geometry or open-loop 
 ├── README.md                        # Project overview, architecture, and benchmark results
 ├── requirements.txt                 # Core and optional dependencies
 ├── src/
-│   ├── aegis_v4/                    # Flagship Aegis-V4 (Exact Active-Set CBF-QP, Online ACI, Gaze-Regret)
-│   ├── aegis_core.py                # Frozen Aegis-v3 baseline (v3.0-frozen)
+│   ├── aegis_v4/                    # Core Aegis-DSG engine (Exact Active-Set CBF-QP, Online ACI, Gaze-Regret)
+│   ├── aegis_core.py                # Perception-first Aegis-Kin baseline
 │   ├── aegis_v3_modules.py          # Rotating-Calipers OBB, Split Conformal, Zero-Shot CLIP Cache
 │   ├── baselines.py                 # Distance, Semantic, and Random baselines
 │   ├── metrics.py                   # Hazard Recall, CVaR-5%, Jaccard Flicker F_t, Latency
@@ -91,9 +90,9 @@ Rather than compressing a 3D Scene Graph purely by static geometry or open-loop 
 │   └── real_data/                   # Official Meta Aria ADT (RGB/3D/Eye-Gaze) & 3DSSG loaders
 ├── paper/                           # Ready-to-compile IEEEtran arXiv LaTeX manuscript (main.tex + figs)
 ├── scripts/
-│   ├── benchmarks/                  # Reproducible benchmark entrypoints (V4 Breakthrough, Aria ADT, MuJoCo)
+│   ├── benchmarks/                  # Reproducible benchmark entrypoints (Aria ADT, MuJoCo, Ablations)
 │   └── demos/                       # Interactive HTML5 viewers, real-photo YOLOv8+MiDaS, web app
-├── tests/                           # 33 unit tests (13 v3.0-frozen + 20 Aegis-V4 KKT/CBF/ACI invariants)
+├── tests/                           # 33 unit tests verifying all KKT, CBF, ACI, and safety invariants
 ├── user_study/                      # Offline HTML5 Human-in-the-Loop Reaction-Time + NASA-TLX app
 └── results/                         # Publication figures, benchmark JSONs, and interactive viewers
 ```
@@ -108,7 +107,7 @@ pip install -r requirements.txt
 # 1. Verify all 33 mathematical & safety invariants (runs in <0.2s on CPU)
 python -m unittest discover -s tests -v
 
-# 2. Reproduce flagship Aegis-V4 (CCBS + Online ACI) on Meta Aria & MuJoCo 4.0
+# 2. Reproduce Aegis-DSG (CCBS + Online ACI) on Meta Aria & MuJoCo 4.0
 python scripts/benchmarks/run_v4_breakthrough_benchmark.py
 
 # 2. Reproduce the 5-breakthrough v3.0 Master Verification (Meta Aria Eye-Gaze, Conformal, OBB+MuJoCo, Hierarchy, CLIP)
