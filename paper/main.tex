@@ -1,0 +1,273 @@
+\documentclass[journal]{IEEEtran}
+
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+
+\newtheorem{proposition}{Proposition}
+\newtheorem{theorem}{Theorem}
+
+\title{Aegis-DSG: Counterfactual Control-Barrier Sparsification of Dynamic 3D Scene Graphs with Non-Exchangeable Online Conformal Safety}
+
+\author{Truong Hoang Khang%
+\thanks{Independent Research Project. Code, unit tests, reproducible benchmarks, and the offline human-in-the-loop NASA-TLX study harness are publicly available at \url{https://github.com/khang23820wjsf-lgtm/Aegis-DSG-Safety-Critical-and-Task-Oriented-Compression-of-Dynamic-3D-Scene-Graphs-under-Sensory-Ba} (Release \texttt{v4.0-frozen}).}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Modern spatial perception systems such as Hydra and wearable egocentric platforms such as Meta Project Aria construct dense Dynamic 3D Scene Graphs (DSGs) containing 60--100+ active objects per frame. Transmitting raw graphs directly to wearable assistive displays or bandwidth-constrained planners causes cognitive overload, whereas naive compression risks discarding critical dynamic or small sharp hazards (e.g., a kitchen knife or an approaching pedestrian). Prior DSG compression methods---such as D-Lite (shortest-path distortion) and Clio (task-driven Information Bottleneck)---operate under a \emph{perception-first} paradigm that ignores closed-loop control invariance and suffers from high temporal flicker or $O(N^3)$ runtime. We present \textbf{Aegis-DSG (v4.0)}, a real-time (~138~Hz on CPU) \emph{control-first} sparsification engine built around four unified layers: (i) a Temporal Belief Filter with object permanence; (ii) \textbf{Counterfactual Control-Barrier Sparsification (CCBS)}, which solves an exact Active-Set 3D-Slack Discrete-Time CBF-QP to retain the minimal Carath\'eodory KKT support ($|S_{\text{KKT}}| \le 3$) and rank objects by counterfactual control regret $\Delta_{\text{CF}}(v) = \|u^*_{\text{CBF}}(G) - u^*_{\text{CBF}}(G \setminus \{v\})\|_2$, modulated by real 3D eye-gaze attention deficit and offline-cached OpenCLIP semantics; (iii) Rotating-Calipers OBB free-space-preserving coarsening with a hard \emph{Non-Coarsenable Atomic Hazard Invariant}; and (iv) \textbf{Self-Supervised Non-Exchangeable Online Adaptive Conformal Inference (ACI)} paired with monotone submodular selection ($1 - 1/e$). Evaluated on 11 real Meta Project Aria Digital Twin sequences and 10 real 3DSSG rooms in MuJoCo~4.0 rigid-body physics at budget $k = 5$, Aegis-V4 achieves \textbf{98.8\%} hazard coverage, \textbf{82.8\%} CVaR-5\% worst-frame recall, \textbf{100.0\%} unmerged atomic hazard preservation, \textbf{0.0198~m/s} mean control regret ($p_{95} = 0.000\text{ m/s}$, $12.7\times$ lower than perception-first Aegis-v3 and $85\times$ lower than Distance/Clio), \textbf{95.24\%} self-supervised online ACI coverage (95\% target), \textbf{7.26~ms/frame} latency, and cuts MuJoCo heavy-noise collisions by \textbf{45.5\%} while raising navigation success by \textbf{+20 percentage points}.
+\end{abstract}
+
+\begin{IEEEkeywords}
+3D Scene Graphs, Graph Sparsification, Control Barrier Functions, Adaptive Conformal Inference, Egocentric Perception, Assistive Robotics.
+\end{IEEEkeywords}
+
+\section{Introduction}
+\IEEEPARstart{H}{ierarchical} 3D Scene Graphs (DSGs)~\cite{hughes2022hydra,hughes2024hydra_ijrr} have emerged as a unifying representation for spatial AI, organizing metric-semantic meshes, objects, navigable places, and rooms into a queryable graph. However, on wearable augmented-reality (AR) glasses~\cite{pan2023adt} or assistive mobile robots operating in cluttered indoor environments, a single egocentric frame routinely exposes 60--100+ visible objects. Surfacing all detections simultaneously induces severe cognitive overload for human users and computational bottlenecks for downstream local planners.
+
+Recent DSG compression frameworks address this bandwidth bottleneck from two distinct perception-oriented perspectives: \textbf{D-Lite}~\cite{maggio2024dlite} prunes graph vertices to minimize global shortest-path distortion across static rooms, while \textbf{Clio}~\cite{maggio2024clio} applies the Agglomerative Information Bottleneck (aIB) over CLIP embeddings~\cite{radford2021clip} to cluster objects relevant to open-vocabulary tasks. Despite their elegance, both paradigms exhibit critical failure modes in safety-critical egocentric interaction under tight cognitive budgets ($k \le 5$):
+\begin{enumerate}
+    \item \emph{Control-Blindness:} Neither shortest-path distortion nor semantic mutual information accounts for relative 3D velocity, Time-to-Collision (TTC), or whether dropping an entity alters the agent's safe velocity command.
+    \item \emph{Semantic Erasure of Atomic Hazards:} Spatial clustering routinely absorbs small, intrinsically lethal objects (e.g., a butcher knife on a kitchen table) into anonymous geometric clusters alongside benign clutter.
+    \item \emph{Temporal Instability and Latency:} Frame-independent $O(N^3)$ IB optimization incurs high Jaccard flicker ($F_t > 0.56$) and heavy CPU latency, rendering continuous 30--60~Hz assistive feedback infeasible.
+    \item \emph{Violation of Exchangeability in Conformal Safety:} Static split conformal calibration assumes i.i.d.\ exchangeability, which breaks on temporally autocorrelated egocentric video streams under activity shifts.
+\end{enumerate}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{figs/aria_adt_aegis_v2_showcase.png}
+    \caption{Real egocentric kitchen frame from Meta Project Aria Digital Twin (\texttt{golden\_skeleton\_seq100}). Raw perception exposes 89 overlapping objects (left). Aegis-DSG compresses the scene to 5 stable entities (right), collapsing 15 static cabinets into \texttt{cabinet/wardrobe\_group(x15)} while strictly preserving the small butcher knife as \texttt{[!] ATOMIC: KNIFE | 0.5m | R=0.92}.}
+    \label{fig:hero}
+\end{figure}
+
+To close these gaps, we propose \textbf{Aegis-DSG (v4.0)}, shifting DSG sparsification from \emph{perception-first} distortion minimization to \textbf{Control-First Counterfactual Compression}. Rather than asking how closely the compressed graph resembles the full graph, Aegis-V4 asks: \emph{``If entity $v$ is removed from the compressed scene graph, does the agent's optimal Control Barrier Function (CBF) safe velocity change?''} Our main contributions are:
+\begin{itemize}
+    \item \textbf{Counterfactual Control-Barrier Sparsification (CCBS):} An exact Active-Set 3D-Slack Discrete-Time CBF-QP solver ($<0.2$~ms in pure NumPy) that extracts the minimal Carath\'eodory KKT barrier support ($|S_{\text{KKT}}| \le 3$) and ranks entities by counterfactual control regret $\Delta_{\text{CF}}(v)$.
+    \item \textbf{Epistemic 3D Eye-Gaze \& Offline-Cached OpenCLIP Integration:} Modulates counterfactual regret by visual attention deficit $(1 - A_{\text{gaze}})$ computed from real wearable eye-gaze rays, paired with $O(1)$ offline-cached zero-shot CLIP task and 6-axis physical hazard affordance scoring.
+    \item \textbf{Free-Space-Preserving OBB Coarsening with Atomic Hazard Invariance:} Combines Union-Find clustering, Rotating-Calipers Minimum-Area OBBs~\cite{freeman1975obb}, and cross-layer semantic zoom (\texttt{Object} $\leftrightarrow$ \texttt{Place}) while strictly forbidding semantic erasure of intrinsic atomic hazards.
+    \item \textbf{Self-Supervised Non-Exchangeable Online ACI:} Adapts Gibbs \& Cand\`es' Adaptive Conformal Inference~\cite{gibbs2021aci} to streaming egocentric DSGs without i.i.d.\ assumptions or deployment-time ground-truth labels.
+    \item \textbf{Comprehensive Real-Data Verification:} Validated across 11 real Meta Project Aria Digital Twin sequences~\cite{pan2023adt}, 10 real 3DSSG rooms~\cite{wald20203dssg} in MuJoCo~4.0~\cite{todorov2012mujoco}, 33 unit tests, Leave-One-Out ablations, safety-augmented baselines, and an offline NASA-TLX~\cite{hart1988nasatlx} human evaluation harness.
+\end{itemize}
+
+\section{Problem Formulation}
+Let $G_t = (V_t, E_t)$ denote the observed Dynamic 3D Scene Graph at time step $t$ containing object, place, and room vertices, and let $x_t = (p_t, v_t, \mathbf{g}_t)$ denote the egocentric agent's 3D position, velocity, and optional unit 3D eye-gaze ray. Each object $v \in V_t^{\text{obj}}$ carries estimated 3D centroid $p_v$, extents $s_v$, velocity $\dot{p}_v$, detection confidence $Q_v \in [0, 1]$, and semantic label $\ell_v$.
+
+Given a strict cognitive bandwidth budget $k \in \mathbb{Z}_+$ (typically $k = 5$), our objective is to produce a compressed multi-layer entity set $G'_t$ ($|G'_t| \le k$, where entities may be atomic objects, oriented super-nodes, or place summaries) that jointly minimizes:
+\begin{enumerate}
+    \item \textbf{Counterfactual Control Regret:}
+    \begin{equation}
+        \mathcal{R}_{\text{ctrl}}(G_t, G'_t) = \big\| u^*_{\text{CBF}}(G_t) - u^*_{\text{CBF}}(G'_t) \big\|_2,
+        \label{eq:regret}
+    \end{equation}
+    where $u^*_{\text{CBF}}(\cdot)$ is the safe velocity solving the Discrete-Time CBF-QP over the graph's barrier constraints;
+    \item \textbf{Atomic Semantic Erasure:} Zero loss of individual identity for active intrinsic hazards $V_t^{\text{atom}}$;
+    \item \textbf{Temporal Jaccard Flicker:}
+    \begin{equation}
+        F_t = \frac{|C(G'_t) \triangle C(G'_{t-1})|}{|C(G'_t) \cup C(G'_{t-1})|},
+    \end{equation}
+    where $C(G'_t)$ is the set of underlying object IDs covered by $G'_t$, subject to real-time CPU latency ($<20$~ms/frame).
+\end{enumerate}
+
+\section{Methodology: Aegis-DSG v4.0}
+Aegis-V4 processes each frame through four tightly coupled layers (Algorithm~\ref{alg:aegisv4}).
+
+\subsection{Layer 1: Temporal Belief Filter \& Object Permanence}
+To reject transient 1-frame false-positive ghosts under noisy detectors while retaining briefly occluded hazards, each tracked entity maintains an existence belief $p_t(v) \in [0, 1]$ updated via EMA:
+\begin{equation}
+    p_t(v) = (1 - \alpha_b) p_{t-1}(v) + \alpha_b Q_v,
+\end{equation}
+initialized conservatively at $p_0(v) = \beta_0 Q_v$ ($\beta_0 = 0.75$). Unobserved tracks that were previously confirmed hazards ($R_{t-1}(v) > \tau_{\text{haz}}$, seen $\ge 2$ frames) are propagated via constant-velocity rollout $p_v \leftarrow p_v + \dot{p}_v \Delta t$ with exponential belief decay for up to $M_{\text{occ}} = 2$ frames.
+
+\subsection{Layer 2: Counterfactual CBF-QP, Epistemic Gaze \& OpenCLIP}
+\subsubsection{Exact Active-Set 3D-Slack Discrete-Time CBF-QP}
+For each 3D entity passing vertical body-clearance filtering ($z_{\min} \le h_{\text{agent}} + 0.15\text{ m}$ and $z_{\max} \ge 0.05\text{ m}$, bypassed for atomic hazards), let $h_v(x) = d_{\text{signed}}(p_t, v) - r_{\text{agent}} - m_{\text{safe}}$ be the exact 2D signed box clearance with outward unit normal $a_v \in \mathbb{R}^2$. Enforcing discrete-time exponential barrier invariance $h_v(x_{t+1}) \ge (1 - \gamma_{\text{cbf}}) h_v(x_t)$ with obstacle velocity compensation yields the linear half-space constraint:
+\begin{equation}
+    a_v^\top u + \xi \ge a_v^\top \dot{p}_v - \frac{\gamma_{\text{cbf}}}{\Delta t} h_v(x_t) \triangleq b_v, \quad \xi \ge 0.
+    \label{eq:cbf}
+\end{equation}
+We solve the exact 3-variable strictly convex QP:
+\begin{equation}
+    (u^*, \xi^*) = \arg\min_{\|u\|_2 \le u_{\max},\, \xi \ge 0} \frac{1}{2}\|u - u_{\text{nom}}\|_2^2 + \frac{\rho}{2}\xi^2 \quad \text{s.t. } \eqref{eq:cbf}\ \forall v.
+    \label{eq:qp}
+\end{equation}
+
+\begin{proposition}[Minimal Carath\'eodory KKT Barrier Support]
+Because $(u, \xi) \in \mathbb{R}^3$ and \eqref{eq:qp} is strictly convex, by Carath\'eodory's theorem on the KKT cone there exists an active barrier support $S_{\text{KKT}} \subseteq V_t$ of cardinality $|S_{\text{KKT}}| \le 3$ such that solving \eqref{eq:qp} over $S_{\text{KKT}}$ alone reproduces the exact full-graph safe velocity $u^*_{\text{CBF}}(S_{\text{KKT}}) = u^*_{\text{CBF}}(V_t)$ with zero control regret ($\mathcal{R}_{\text{ctrl}} = 0$).
+\end{proposition}
+
+Crucially, extracting $S_{\text{KKT}}$ directly from the active-set solver resolves the \emph{co-binding degeneracy}: when two symmetric obstacles jointly bind the optimal velocity, removing either one individually may yield zero leave-one-out regret $\Delta_{\text{CF}}(v) = \|u^*(G) - u^*(G \setminus \{v\})\|_2 = 0$, whereas retaining $S_{\text{KKT}}$ guarantees exact invariance. For stationary close-range atomic hazards ($u_{\text{nom}} \approx 0$), a smooth proximity urgency $m_{\text{urg}}(v)$ ensures manipulation hazards (e.g., a knife at 0.5~m) retain high priority.
+
+\subsubsection{Epistemic 3D Eye-Gaze Modulation}
+When a wearable eye-tracker provides a 3D world gaze ray $\mathbf{g}_t$, we compute instantaneous foveal attention $a_t(v) = \exp(-\theta_{\text{gaze}}^2 / 2\sigma_{\text{fovea}}^2)$ ($\sigma_{\text{fovea}} = 15^\circ$) smoothed into fixation $A_{\text{gaze}}(v, t) \in [0, 1]$, and modulate priority strictly when $\mathbf{g}_t$ is present:
+\begin{equation}
+    \Psi(v) = \big(\Delta_{\text{CF}}(v) + R_{\text{kin}}(v)\big)\big(1 + \lambda_{\text{epi}}(1 - A_{\text{gaze}}(v, t))\big).
+\end{equation}
+When no eye-tracker is mounted ($\mathbf{g}_t = \text{None}$, e.g., mobile robots), the gaze multiplier stays strictly $1.0$ to prevent spurious score inflation.
+
+\subsubsection{Offline-Cached Zero-Shot CLIP \& Affordance Ontology}
+Our \texttt{AffordanceRiskMapper} maps labels across 6 domain-agnostic physical hazard axes (\emph{sharp/puncture, thermal, chemical/bio, electrical, elevation drop, living/heavy dynamic}) via token-boundary matching or contrastive \texttt{open\_clip} (\texttt{ViT-B-32}) cosine margin against a benign prototype. Both affordance scores and arbitrary open-vocabulary task prompts are encoded \emph{once offline} and cached in $O(1)$ hash tables ($0.00$~ms steady-state neural runtime).
+
+\subsection{Layer 3: OBB Coarsening, Semantic Zoom \& Atomic Invariant}
+\textbf{Hard Non-Coarsenable Invariant:} Entities with $\texttt{is\_atomic\_hazard} = \text{True}$ or $v \in S_{\text{KKT}}$ bypass all merging, preventing semantic erasure. All remaining static non-atomic objects are clustered per class via Union-Find when horizontal edge clearance $< 0.70$~m (human shoulder width + margin), guarded by a minimum-area 2D Oriented Bounding Box (Rotating Calipers~\cite{freeman1975obb}) bloat bound ($\text{area}_{\text{OBB}} \le 1.85 \sum \text{area}_i$). Super-nodes aggregate risk via worst-case $\max(\cdot)$ rather than $\text{mean}(\cdot)$. Distant non-atomic clutter ($\ge 3.2$~m) sharing a parent \texttt{place} node is lifted into a single cross-layer summary \texttt{place:zone(xN)}.
+
+\subsection{Layer 4: Self-Supervised Online ACI \& Submodular Selection}
+To eliminate the i.i.d.\ exchangeability flaw of static Split Conformal calibration on autocorrelated video streams, Aegis-V4 maintains a rolling window of non-conformity scores and updates the miscoverage target online~\cite{gibbs2021aci}:
+\begin{equation}
+    \alpha_{t+1} = \mathrm{clip}\big(\alpha_t + \eta (\alpha_{\text{target}} - \text{err}_t),\ \alpha_{\min},\ \alpha_{\max}\big),
+\end{equation}
+where $\text{err}_t \in \{0, 1\}$ is computed either from feedback or \emph{self-supervised} at deployment time via compressed-graph CBF slack discrepancy and sudden TTC surprise (zero GT labels required). Under arbitrary non-exchangeable shift, $\lim_{T\to\infty} \frac{1}{T}\sum_{t=1}^T \text{err}_t = \alpha_{\text{target}}$~\cite{gibbs2021aci}.
+
+Finally, given the ACI-calibrated stopping threshold $\tau_t$, we greedily select up to $k$ entities maximizing the monotone submodular facility-location objective~\cite{nemhauser1978submodular}:
+\begin{equation}
+    F(S) = \sum_{u \in \mathcal{U}} w_u \max_{v \in S} K(u, v),
+\end{equation}
+with $K(u, v) = \delta_{u,v}$ for active/atomic/KKT hazards (ensuring no hazard suppresses another) plus temporal hysteresis for previously retained entities.
+
+\begin{algorithm}[t]
+\caption{Aegis-DSG v4.0 (CCBS + Online ACI) Per-Frame Step}
+\label{alg:aegisv4}
+\begin{algorithmic}[1]
+\REQUIRE Observed DSG $G_t$, agent state $(p_t, v_t, \mathbf{g}_t)$, budget $k$, ACI state $\alpha_t$
+\STATE Update temporal beliefs $p_t(v)$ and propagate occluded active hazards (Layer 1)
+\STATE Build 3D-filtered CBF half-spaces $\{a_v^\top u + \xi \ge b_v\}$; solve Exact Active-Set 3D-Slack QP \eqref{eq:qp} $\to (u^*_{\text{full}}, \xi^*_{\text{full}}, S_{\text{KKT}})$
+\STATE Compute counterfactual regret $\Delta_{\text{CF}}(v)$ for active/near-active nodes; apply gaze modulation if $\mathbf{g}_t \neq \text{None}$ and $O(1)$ CLIP cache (Layer 2)
+\STATE Partition $V_t$ into protected ($V_t^{\text{atom}} \cup S_{\text{KKT}}$) and coarsenable; apply Union-Find OBB coarsening + cross-layer Place zoom (Layer 3)
+\STATE Greedily maximize monotone submodular $F(S)$ with hysteresis, stopping early below ACI threshold $\tau_t$ (Layer 4)
+\STATE Evaluate self-supervised CBF-slack/TTC proxy error $\text{err}_t$ and update $\alpha_{t+1}$ online
+\RETURN Compressed subgraph $G'_t$ ($|G'_t| \le k$) and safe velocity $u^*_{\text{CBF}}(G'_t)$
+\end{algorithmic}
+\end{algorithm}
+
+\section{Experimental Evaluation}
+
+\subsection{Datasets, Baselines, and Fair Implementation Protocol}
+We evaluate on two real-world 3D benchmarks with zero data leakage (verified by forensic audit: no test-time method reads ground-truth hazard flags or future frames):
+\begin{itemize}
+    \item \textbf{Meta Project Aria Digital Twin (ICCV 2023)~\cite{pan2023adt}:} 11 real egocentric apartment sequences across 6 activities (\texttt{golden\_skeleton}, \texttt{clean}, \texttt{meal}, \texttt{work}, \texttt{decoration}, \texttt{multiskeleton\_party}, \texttt{multiuser\_clean}), including exact 6DoF SLAM poses, 3D object boxes, and real 3D eye-gaze (\texttt{eyegaze.csv}). For unseen testing, 5 sequences calibrate static baselines while 6 disjoint sequences evaluate generalization.
+    \item \textbf{3DSSG $\times$ MuJoCo 4.0~\cite{wald20203dssg,todorov2012mujoco}:} 10 real scanned indoor rooms compiled into 200~Hz C++ rigid-body physics with 2 crossing dynamic pedestrians. All 10 rooms are verified physically navigable by 2D BFS, and every sparsifier drives the identical strictly sparsifier-fed Recency-Decayed Local Occupancy Costmap + Local A* + DWA (or CBF-QP) controller.
+\end{itemize}
+Baselines include \textbf{Distance}, \textbf{D-Lite (True Dijkstra)}~\cite{maggio2024dlite}, \textbf{Clio (True aIB with Jensen-Shannon Divergence)}~\cite{maggio2024clio}, \textbf{Distance + Atomic Rule}, \textbf{Distance + 3D TTC Cone}, and our perception-first \textbf{Aegis-v3 (Frozen)}. All algorithms are implemented in pure Python/NumPy on the same CPU (no GPU) for fair algorithmic complexity comparison; both Clio and Aegis operate on pre-computed/cached semantic features ($0.00$~ms per-frame neural inference).
+
+\subsection{Main Results on Real Meta Project Aria}
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{figs/aegis_v4_breakthrough.png}
+    \caption{Aegis-V4 (\texttt{CCBS + Online ACI}) comprehensive evaluation across 6 unseen real Meta Project Aria sequences ($k = 5$) and 10 real 3DSSG rooms in MuJoCo~4.0. (a)~Counterfactual control regret drops $12.7\times$ vs.\ Aegis-v3 and $85\times$ vs.\ Distance/Clio. (b)~Hazard coverage reaches 98.8\% with 82.8\% CVaR-5\% and 100\% unmerged atomic recall. (c)~Self-supervised non-exchangeable Online ACI converges to 95.24\% empirical coverage across 6 activity shifts without ground-truth labels. (d)~Closed-loop MuJoCo~4.0 navigation achieves 90\% SR and 0.50 collisions under medium noise.}
+    \label{fig:v4_master}
+\end{figure*}
+
+\begin{table}[t]
+\centering
+\caption{Flagship Benchmark on 6 Unseen Real Meta Aria Sequences ($k=5$, 210 Frames). Best values in \textbf{bold}.}
+\label{tab:v4_aria}
+\resizebox{\columnwidth}{!}{
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Method} & \textbf{Cov. (\%)$\uparrow$} & \textbf{CVaR-5\%$\uparrow$} & \textbf{Atomic$\uparrow$} & \textbf{Regret (m/s)$\downarrow$} & \textbf{Flicker$\downarrow$} & \textbf{ms$\downarrow$} \\
+\midrule
+Distance & 23.0 & 0.0 & 100.0 & 1.692 & 0.239 & \textbf{0.38} \\
+D-Lite (True) & 46.7 & 11.6 & 91.3 & 1.528 & 0.306 & 75.55 \\
+Clio (True aIB) & 17.6 & 3.3 & 0.0 & 1.738 & 0.593 & 2564.3 \\
+Aegis-v3 (Frozen) & 87.2 & 53.4 & 100.0 & 0.252 & 0.265 & 17.20 \\
+\textbf{Aegis-V4 (Ours)} & \textbf{98.8} & \textbf{82.8} & \textbf{100.0} & \textbf{0.0198} & \textbf{0.217} & 7.26 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+Table~\ref{tab:v4_aria} and Fig.~\ref{fig:v4_master}(a--c) summarize our primary results on the 6 unseen Meta Aria sequences:
+\begin{itemize}
+    \item \textbf{Near-Zero Control Distortion:} Aegis-V4 reduces mean counterfactual control regret to \textbf{0.0198~m/s} ($p_{95} = 0.0000\text{ m/s}$, i.e., zero control distortion on 95\% of frames; the remaining 6/210 frames stem intentionally from Layer~1 retaining briefly occluded obstacles not in single-frame $G_t^{\text{obs}}$).
+    \item \textbf{Dominant Safety \& Stability:} Compared to perception-first Aegis-v3, Aegis-V4 lifts hazard coverage by \textbf{+11.6~pp} (87.2\% $\to$ \textbf{98.8\%}), worst-5\% CVaR by \textbf{+29.4~pp} (53.4\% $\to$ \textbf{82.8\%}), lowers flicker to \textbf{0.217}, and runs \textbf{2.37$\times$ faster} (\textbf{7.26~ms/frame}, ~138~Hz).
+    \item \textbf{Self-Supervised Non-Exchangeable ACI:} Across 6 streaming activity shifts without ground-truth labels, proxy ACI achieves \textbf{95.24\%} empirical coverage (target 95.0\%, $|\text{err}| = 0.0024$). Under synthetic AR(1) ($\rho = 0.92$) + drift + shock stress testing, Online ACI maintains 0.053 miscoverage vs.\ 0.427 for static Split Conformal.
+\end{itemize}
+
+Across all 11 Meta Aria sequences (Fig.~\ref{fig:aria11}), Aegis wins \textbf{11/11} activities (Mean $\pm$ 95\% CI: $88.5\% \pm 3.0\%$ for v2/v3 baseline vs.\ $35.8\% \pm 9.8\%$ D-Lite, $19.6\% \pm 7.1\%$ Clio, $18.2\% \pm 10.0\%$ Distance). A dense-frame audit on 15 consecutive frames with zero temporal subsampling confirms Clio's high flicker is intrinsic ($F_t = 0.567$, 824.6~ms/frame vs.\ Aegis $F_t = 0.172$).
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{figs/aria_11seq_benchmark.png}
+    \caption{Aggregate and per-activity safety comparison across all 11 real Meta Project Aria Digital Twin sequences ($k = 5$, zero cherry-picking).}
+    \label{fig:aria11}
+\end{figure}
+
+\subsection{Closed-Loop 3DSSG $\times$ MuJoCo 4.0 Rigid-Body Physics}
+
+\begin{table}[t]
+\centering
+\caption{Closed-Loop 3D Rigid-Body Physics across 10 Real 3DSSG Rooms in MuJoCo~4.0 ($k=5$, Medium \& Heavy Sensor Noise).}
+\label{tab:mujoco}
+\resizebox{\columnwidth}{!}{
+\begin{tabular}{llcccc}
+\toprule
+\textbf{Noise} & \textbf{Method} & \textbf{SR (\%)$\uparrow$} & \textbf{Collisions$\downarrow$} & \textbf{SPL$\uparrow$} & \textbf{Cov. (\%)$\uparrow$} \\
+\midrule
+\multirow{5}{*}{Medium} & Clio (True aIB) & 60.0 & 1.10 & 0.562 & 68.6 \\
+ & D-Lite (True) & 60.0 & 1.00 & 0.546 & 90.0 \\
+ & Distance & 80.0 & 1.00 & 0.720 & 85.3 \\
+ & Aegis-v3 (DWA) & \textbf{90.0} & \textbf{0.50} & \textbf{0.808} & \textbf{100.0} \\
+ & \textbf{Aegis-V4 (CCBS+CBF-QP)} & \textbf{90.0} & \textbf{0.50} & 0.800 & 99.5 \\
+\midrule
+\multirow{3}{*}{Heavy} & Aegis-v3 (DWA) & 60.0 & 1.10 & 0.575 & 98.7 \\
+ & Aegis-V4 (DWA) & 70.0 & 1.00 & 0.645 & \textbf{99.3} \\
+ & \textbf{Aegis-V4 (CCBS+CBF-QP)} & \textbf{80.0} & \textbf{0.60} & \textbf{0.712} & 98.7 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+Table~\ref{tab:mujoco} demonstrates closed-loop physical safety in MuJoCo~4.0. Under medium noise, Aegis-V4 matches the peak \textbf{90.0\% SR} and \textbf{0.50 collisions} (50\% fewer collisions than Distance/D-Lite/Clio). Under \textbf{heavy perception noise}, where perception-first Aegis-v3 degrades to 60.0\% SR and 1.10 collisions, \textbf{Aegis-V4 (CCBS+CBF-QP)} achieves \textbf{80.0\% SR (+20.0~pp)}, \textbf{0.60 collisions (-45.5\%)}, and \textbf{0.712 SPL (+23.8\%)}.
+
+\subsection{Leave-One-Out Ablation \& Safety-Augmented Baselines}
+
+\begin{table}[t]
+\centering
+\caption{Leave-One-Out Ablation \& Safety-Augmented Fair Baselines on 6 Unseen Meta Aria Sequences ($k=5$).}
+\label{tab:ablation}
+\resizebox{\columnwidth}{!}{
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Variant / Baseline} & \textbf{Cov. (\%)$\uparrow$} & \textbf{CVaR-5\%$\uparrow$} & \textbf{Atomic$\uparrow$} & \textbf{Heavy Flicker$\downarrow$} \\
+\midrule
+Distance + Atomic Rule & 45.6 & 8.7 & 97.6 & 0.449 \\
+Distance + 3D TTC Cone & 96.2 & 77.1 & 100.0 & 0.423 \\
+\midrule
+Aegis-v3 Full & 87.4 & 48.0 & 100.0 & \textbf{0.309} \\
+\quad w/o Atomic Invariant & 87.2 & 47.2 & \textbf{82.4 (-17.6)} & 0.309 \\
+\quad w/o Layer 3 Coarsening & \textbf{83.2 (-4.2)} & \textbf{34.9 (-13.1)} & 99.2 & 0.320 \\
+\quad w/o Split Conformal & 86.2 (-1.2) & \textbf{43.1 (-4.9)} & 100.0 & 0.309 \\
+\quad w/o Layer 1 Belief Filter & 89.2 & 51.1 & 100.0 & \textbf{0.429 (+39\%)} \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\columnwidth]{figs/paper_ablation_loo.png}
+    \caption{Safety-augmented baselines (left) and Leave-One-Out ablation on real Meta Aria (right), isolating the necessity of each layer.}
+    \label{fig:ablation}
+\end{figure}
+
+Table~\ref{tab:ablation} and Fig.~\ref{fig:ablation} confirm three key findings: (i)~slapping an atomic-knife rule onto Distance yields only 45.6\% coverage and 8.7\% CVaR-5\%, proving Aegis is not a keyword heuristic; (ii)~a pure 1-objective 3D TTC ranker achieves high raw recall on 0\%-FP ground truth but suffers \textbf{+37\% higher heavy-noise flicker} (0.423 vs.\ 0.309) with zero coarsening or open-vocabulary task support; and (iii)~removing the Atomic Invariant drops unmerged atomic recall by \textbf{-17.6~pp}, removing Layer~3 coarsening drops CVaR-5\% by \textbf{-13.1~pp}, and removing Layer~1 belief filtering inflates heavy-noise flicker by \textbf{+39\%}. Additionally, Cross-Layer Zoom increases objects summarized per $k=5$ slot by \textbf{+42\%} ($7.6 \to 10.8$ objects), and real \texttt{open\_clip ViT-B-32} caching identifies top kitchen task matches (\texttt{kitchen utensil}, \texttt{food processor}, \texttt{dishrack}) and 6/6 cross-domain hazard probes (\texttt{scalpel}, \texttt{welding torch}, \texttt{sulfuric acid flask}, \texttt{high voltage panel} = True; \texttt{plush teddy bear}, \texttt{cardboard box} = False) in 20.1~ms/frame ($43.5\times$ faster than Clio).
+
+\section{Limitations and Future Work}
+To maintain strict scientific transparency, we note three current limitations:
+\begin{enumerate}
+    \item \textbf{Hardware \& Outdoor Validation:} Our results are validated on real offline egocentric datasets (Meta Aria) and 200~Hz rigid-body physics (3DSSG $\times$ MuJoCo~4.0), not yet on live wearable AR hardware in outdoor streets. Integrating Aegis-V4 as a ROS2 node downstream of Hydra is straightforward future work.
+    \item \textbf{Human-in-the-Loop Data Collection:} While we ship a complete self-contained HTML5 reaction-time, localization accuracy, and 6-subscale NASA-TLX~\cite{hart1988nasatlx} evaluation harness (\texttt{user\_study/aegis\_human\_eval.html}) with paired statistical analysis (\texttt{analyze\_study.py}), empirical human participant data ($N \ge 15$) is currently pending collection and is therefore not claimed here.
+    \item \textbf{Budget Sensitivity \& Extreme Deadlock:} Our real-data sweeps focus on $k = 5$; Room~6 in 3DSSG remains a tight U-trap across all methods under medium noise, motivating future $k \in \{3, 8, 12\}$ sweeps and multi-step MPC-CBF rollouts.
+\end{enumerate}
+
+\section{Conclusion}
+We presented \textbf{Aegis-DSG (v4.0)}, reframing Dynamic 3D Scene Graph sparsification from open-loop geometric filtering to \emph{Counterfactual Control-Barrier Sparsification} with \emph{Self-Supervised Non-Exchangeable Online ACI}. Across 11 real Meta Project Aria sequences, 10 real 3DSSG rooms in MuJoCo~4.0, and 33 unit tests, Aegis-V4 achieves 98.8\% hazard coverage, 82.8\% CVaR-5\%, 100\% unmerged atomic hazard preservation, 0.0198~m/s control regret ($p_{95} = 0.000$), 95.24\% self-supervised ACI coverage, and 45.5\% fewer heavy-noise physical collisions at ~138~Hz on CPU.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

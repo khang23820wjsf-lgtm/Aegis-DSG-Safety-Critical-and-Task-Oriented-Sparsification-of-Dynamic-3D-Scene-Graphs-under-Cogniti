@@ -2,12 +2,40 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/)
-[![Release](https://img.shields.io/badge/Release-v3.0--frozen-2ea44f.svg)](https://github.com/khang23820wjsf-lgtm/Aegis-DSG-Safety-Critical-and-Task-Oriented-Compression-of-Dynamic-3D-Scene-Graphs-under-Sensory-Ba/releases)
-[![Unit Tests](https://img.shields.io/badge/Unit%20Tests-13%2F13%20Passing-brightgreen.svg)](tests/test_aegis_core.py)
+[![Release](https://img.shields.io/badge/Release-v4.0--frozen-2ea44f.svg)](https://github.com/khang23820wjsf-lgtm/Aegis-DSG-Safety-Critical-and-Task-Oriented-Compression-of-Dynamic-3D-Scene-Graphs-under-Sensory-Ba/releases)
+[![Unit Tests](https://img.shields.io/badge/Unit%20Tests-33%2F33%20Passing-brightgreen.svg)](tests/)
+[![Paper](https://img.shields.io/badge/arXiv%20LaTeX-paper%2Fmain.tex-b31b1b.svg)](paper/main.tex)
 
-**Aegis-DSG** is a real-time downstream sparsification engine for Dynamic 3D Scene Graphs (DSGs), designed for wearable assistive displays, AR glasses, and bandwidth-constrained mobile robots.
+**Aegis-DSG (v4.0 — Counterfactual Control-Barrier Sparsification + Online ACI)** is a real-time (~138 Hz on CPU) downstream sparsification engine for Dynamic 3D Scene Graphs (DSGs), designed for wearable assistive displays, AR glasses, and bandwidth-constrained mobile robots.
 
-Rather than overwhelming a human wearer or local planner with 60–100+ raw 3D scene objects, **Aegis-DSG** compresses an incoming hierarchical 3D Scene Graph into a temporally stable, safety-preserving multi-layer subgraph of at most $k$ entities (e.g., $k = 5$) in **3–20 ms on CPU**.
+Rather than compressing a 3D Scene Graph purely by static geometry or open-loop heuristics, **Aegis-V4** reframes sparsification as **Control-First Counterfactual Compression**: retaining the minimal $k$-node subgraph ($k = 5$) that preserves the exact optimal safe velocity $u^*_{\text{CBF}}$ of a Discrete-Time Control Barrier Function QP (`p95` control distortion $= 0.000\text{ m/s}$), protected by **Non-Exchangeable Self-Supervised Online ACI** (`95.24%` empirical coverage with zero i.i.d. or GT assumptions).
+
+![Aegis-V4 Breakthrough Benchmark](results/aegis_v4_breakthrough.png)
+*Aegis-V4 (`CCBS + Online ACI`) on 6 unseen real Meta Project Aria Digital Twin sequences and 10 real 3DSSG rooms in MuJoCo 4.0: **98.8% Hazard Coverage**, **82.8% CVaR-5%**, **100.0% Unmerged Atomic Recall**, **0.0198 m/s Control Regret** (`12.7×` lower than v3; `85×` lower than Distance/Clio), **95.24% Self-Supervised Online ACI**, and **7.26 ms/frame (~138 Hz)**.*
+
+---
+
+## Flagship Results: Aegis-V4 (Control-First CCBS + Online ACI)
+
+### A. 6 Unseen Real Meta Project Aria Sequences ($k = 5$, 210 Frames)
+
+| Method | Hazard Cov. (↑) | CVaR-5% (↑) | Unmerged Atomic (↑) | Control Regret (↓) | Flicker (↓) | Latency (ms ↓) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Distance** | 23.0% | 0.0% | 100.0% | `1.692 m/s` | 0.239 | `0.38 ms` |
+| **D-Lite (True Dijkstra)** | 46.7% | 11.6% | 91.3% | `1.528 m/s` | 0.306 | `75.55 ms` |
+| **Clio (True aIB)** | 17.6% | 3.3% | 0.0% | `1.738 m/s` | 0.593 | `2564.3 ms` |
+| **Aegis-v3 (Perception-First, Frozen)** | 87.2% | 53.4% | 100.0% | `0.252 m/s` | 0.265 | `17.20 ms` |
+| **Aegis-V4 (CCBS + Online ACI, Ours)** | **98.8%** | **82.8%** | **100.0%** | **`0.0198 m/s` (`p95=0.000`)** | **0.217** | **`7.26 ms` (~138 Hz)** |
+
+### B. Real 3DSSG Scanned Rooms × MuJoCo 4.0 Rigid-Body Physics (10 Rooms, $k = 5$)
+
+| Noise Regime | Method | Success Rate (↑) | Real Collisions (↓) | SPL (↑) | Hazard Cov. (↑) |
+| :--- | :--- | :---: | :---: | :---: | :---: |
+| `medium` | Distance / D-Lite / Clio | 80% / 60% / 60% | 1.00 / 1.00 / 1.10 | 0.720 / 0.546 / 0.562 | 85.3% / 90.0% / 68.6% |
+| `medium` | Aegis-v3 (DWA) | **90.0%** | **0.50** | **0.808** | **100.0%** |
+| `medium` | **Aegis-V4 (CCBS + CBF-QP)** | **90.0%** | **0.50** | 0.800 | 99.5% |
+| `heavy` | Aegis-v3 (DWA) | 60.0% | 1.10 | 0.575 | 98.7% |
+| `heavy` | **Aegis-V4 (CCBS + CBF-QP)** | **80.0% (+20 pp)** | **0.60 (-45.5%)** | **0.712 (+23.8%)** | **98.7%** |
 
 ![Aegis-DSG Real Meta Aria Kitchen Showcase](results/aria_adt_aegis_v2_showcase.png)
 *Real egocentric frame from Meta Project Aria Digital Twin (`Apartment_release_golden_skeleton_seq100`): 89 visible 3D objects compressed into 5 clean entities in `2.9 ms` — collapsing 15 static cabinets into `cabinet/wardrobe_group(x15)` while strictly preserving the small butcher knife as `[!] ATOMIC: KNIFE | 0.5m | R=0.92`.*
@@ -52,7 +80,8 @@ Rather than overwhelming a human wearer or local planner with 60–100+ raw 3D s
 ├── README.md                        # Project overview, architecture, and benchmark results
 ├── requirements.txt                 # Core and optional dependencies
 ├── src/
-│   ├── aegis_core.py                # Unified 4-layer Aegis-DSG engine (v3.0-frozen)
+│   ├── aegis_v4/                    # Flagship Aegis-V4 (Exact Active-Set CBF-QP, Online ACI, Gaze-Regret)
+│   ├── aegis_core.py                # Frozen Aegis-v3 baseline (v3.0-frozen)
 │   ├── aegis_v3_modules.py          # Rotating-Calipers OBB, Split Conformal, Zero-Shot CLIP Cache
 │   ├── baselines.py                 # Distance, Semantic, and Random baselines
 │   ├── metrics.py                   # Hazard Recall, CVaR-5%, Jaccard Flicker F_t, Latency
@@ -60,10 +89,11 @@ Rather than overwhelming a human wearer or local planner with 60–100+ raw 3D s
 │   ├── phase_b/                     # True D-Lite (Dijkstra), True Clio (aIB), GNN-GAT, Submodular
 │   ├── physics/mujoco_env.py        # MuJoCo 4.0 rigid-body 3DSSG environment (Local-A* + DWA)
 │   └── real_data/                   # Official Meta Aria ADT (RGB/3D/Eye-Gaze) & 3DSSG loaders
+├── paper/                           # Ready-to-compile IEEEtran arXiv LaTeX manuscript (main.tex + figs)
 ├── scripts/
-│   ├── benchmarks/                  # Reproducible benchmark entrypoints (Aria ADT, MuJoCo, v3 Master)
+│   ├── benchmarks/                  # Reproducible benchmark entrypoints (V4 Breakthrough, Aria ADT, MuJoCo)
 │   └── demos/                       # Interactive HTML5 viewers, real-photo YOLOv8+MiDaS, web app
-├── tests/test_aegis_core.py         # 13 unit tests verifying all mathematical & safety invariants
+├── tests/                           # 33 unit tests (13 v3.0-frozen + 20 Aegis-V4 KKT/CBF/ACI invariants)
 ├── user_study/                      # Offline HTML5 Human-in-the-Loop Reaction-Time + NASA-TLX app
 └── results/                         # Publication figures, benchmark JSONs, and interactive viewers
 ```
@@ -75,8 +105,11 @@ Rather than overwhelming a human wearer or local planner with 60–100+ raw 3D s
 ```bash
 pip install -r requirements.txt
 
-# 1. Verify all 13 mathematical & safety invariants (runs in <0.1s on CPU)
-python -m unittest tests/test_aegis_core.py -v
+# 1. Verify all 33 mathematical & safety invariants (runs in <0.2s on CPU)
+python -m unittest discover -s tests -v
+
+# 2. Reproduce flagship Aegis-V4 (CCBS + Online ACI) on Meta Aria & MuJoCo 4.0
+python scripts/benchmarks/run_v4_breakthrough_benchmark.py
 
 # 2. Reproduce the 5-breakthrough v3.0 Master Verification (Meta Aria Eye-Gaze, Conformal, OBB+MuJoCo, Hierarchy, CLIP)
 python scripts/benchmarks/run_v3_master_benchmark.py
